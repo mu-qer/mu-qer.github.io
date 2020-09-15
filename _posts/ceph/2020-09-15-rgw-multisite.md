@@ -107,7 +107,9 @@ radosgw-admin zone delete --rgw-zone=default
 radosgw-admin period update --commit
 radosgw-admin zonegroup delete --rgw-zonegroup=default
 radosgw-admin period update --commit
+```
 
+```
 pools=`rados lspools | grep default`; for pool in ${pools[@]}; do rados rmpool $pool $pool --yes-i-really-really-mean-it; done
 ```
 - [5] 更新period
