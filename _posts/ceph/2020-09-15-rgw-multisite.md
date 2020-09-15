@@ -39,7 +39,7 @@ tags:
 > - active-passive 下，只能在master 写入
  
 # 4.multisite 集群搭建
-multisite集群模型如下
+multisite集群模型如下:
 ![rgw-multisite-cluster](https://mu-qer.github.io/assets/img/ceph/2020-09-15-rgw-multisite-cluster-01.JPG)
 
 ## 4.1 创建master-zone/zg/realm
@@ -99,7 +99,9 @@ radosgw-admin period pull --url=http://10.5.8.242:80 --access-key=xxxxxx --secre
 ```
 radosgw-admin zone create --rgw-zonegroup=petreloss --rgw-zone=zone2  --access-key=xxxxxxxx --secret=xxxxxxxxxxx --endpoints=http://10.5.8.242:80
 ```
+
 - [4] 删掉 secondary zone上的default zone 还有pool
+
 ```
 radosgw-admin zonegroup remove --rgw-zonegroup=default --rgw-zone=default
 radosgw-admin period update --commit
@@ -152,14 +154,16 @@ radosgw-admin sync status
 TODO: secondary 结果
 ```
 > data is caught up with source: 表示数据一致
+
 - 查看下master zone/ secondary zone的池中是否数据同步
+
 ```
 rados ls -p zone1.rgw.buckets.data
 TODO: master 结果
-
+```
+```
 rados ls -p zone1.rgw.buckets.data
 TODO: secondary 结果
-
 ```
 完全一样，测试验证通过
 
