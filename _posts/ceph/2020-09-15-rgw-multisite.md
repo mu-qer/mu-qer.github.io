@@ -8,7 +8,6 @@ tags: Ceph
 ---
 
 
-[TOC]
 
 # 1.multisite 说明
 > 多数据中心 (multisite) 旨在实现异地双活，提供了备份容灾的能力。 
@@ -36,6 +35,7 @@ tags: Ceph
  
 # 4.multisite 集群搭建
 multisite集群模型如下:
+
 ![rgw-multisite-cluster](https://mu-qer.github.io/assets/img/ceph/2020-09-15-rgw-multisite-cluster-01.JPG)
 
 ## 4.1 创建master-zone/zg/realm
