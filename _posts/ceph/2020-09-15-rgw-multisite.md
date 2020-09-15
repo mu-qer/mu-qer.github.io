@@ -59,12 +59,12 @@ radosgw-admin zone create --rgw-zonegroup=petreloss --rgw-zone=zone1 --master --
 ```
 - [4] 删除默认产生的pool,zone,zonegroup等
 ```
-(1): radosgw-admin zonegroup remove --rgw-zonegroup=default --rgw-zone=default
-(2): radosgw-admin period update --commit
-(3): radosgw-admin zone delete --rgw-zone=default
-(4): radosgw-admin period update --commit
-(5): radosgw-admin zonegroup delete --rgw-zonegroup=default
-(6): radosgw-admin period update --commit
+radosgw-admin zonegroup remove --rgw-zonegroup=default --rgw-zone=default
+radosgw-admin period update --commit
+radosgw-admin zone delete --rgw-zone=default
+radosgw-admin period update --commit
+radosgw-admin zonegroup delete --rgw-zonegroup=default
+radosgw-admin period update --commit
 ```
 - [5] 删除默认的pool
 ```
@@ -101,14 +101,14 @@ radosgw-admin zone create --rgw-zonegroup=petreloss --rgw-zone=zone2  --access-k
 ```
 - [4] 删掉 secondary zone上的default zone 还有pool
 ```
-(1): radosgw-admin zonegroup remove --rgw-zonegroup=default --rgw-zone=default
-(2): radosgw-admin period update --commit
-(3): radosgw-admin zone delete --rgw-zone=default
-(4): radosgw-admin period update --commit
-(5): radosgw-admin zonegroup delete --rgw-zonegroup=default
-(6): radosgw-admin period update --commit
+radosgw-admin zonegroup remove --rgw-zonegroup=default --rgw-zone=default
+radosgw-admin period update --commit
+radosgw-admin zone delete --rgw-zone=default
+radosgw-admin period update --commit
+radosgw-admin zonegroup delete --rgw-zonegroup=default
+radosgw-admin period update --commit
 
-(7): pools=`rados lspools | grep default`; for pool in ${pools[@]}; do rados rmpool $pool $pool --yes-i-really-really-mean-it; done
+pools=`rados lspools | grep default`; for pool in ${pools[@]}; do rados rmpool $pool $pool --yes-i-really-really-mean-it; done
 ```
 - [5] 更新period
 ```
@@ -137,10 +137,10 @@ TODO: 代码截图
 ## 5.2 测试核对
 - 在secondary zone上上传 50 MB 文件
 ```
-(1) radosgw-admin user create --uid=user1 --display-name="user1"
-(2) s3cmd mb s3://test1
-(3) dd if=/dev/zero of=test.50M.gz bs=5M count=10
-(4) s3cmd  put test.100M.gz s3://test1
+radosgw-admin user create --uid=user1 --display-name="user1"
+s3cmd mb s3://test1
+dd if=/dev/zero of=test.50M.gz bs=5M count=10
+s3cmd  put test.100M.gz s3://test1
 ```
 - 再次分别查看master 和 secondary的同步状态
 ```
