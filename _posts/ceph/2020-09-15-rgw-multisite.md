@@ -1,7 +1,10 @@
 ---
+layout: post
 title: rgw-multisite
 date: 2020-09-15 23:30:09
-categories:
+categories: ceph
+description: ceph-rgw多活
+tags:
 - Ceph
 - linux
 - 网络编程
