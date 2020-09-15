@@ -28,7 +28,7 @@ defaults:
 paginate: 20
 
 #### Site
-title : 星星之火
+title : ThunderBolt
 tagline: keep foolish, keep hungry
 assets: /assets
 url:
