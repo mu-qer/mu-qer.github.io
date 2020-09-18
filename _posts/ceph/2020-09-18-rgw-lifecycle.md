@@ -8,8 +8,6 @@ tags: Ceph
 ---
 
 
-[TOC]
-
 # 1. 集群环境说明
 > 三台机器, 部署nautilus版本(关于在线部署请看另一篇文章：ceph-ansible部署nautilus版本ceph集群)：
 >> - ceph-2: 192.168.2.76 (部署 mons, mgrs, osds), (osd0, 0sd3)
@@ -62,6 +60,7 @@ ceph osd getcrushmap -o crushmap
 crushtool -d crushmap -o dencode_crushmap
 ```
 - 修改dencode_crushmap 文件：
+
 ```
 # buckets
 #--------------------------------------------------------------#
@@ -158,11 +157,15 @@ rule ch2_disk {
 }
 #end crush map
 ```
+
 - 编译新的crush map
+
 ```
 crushtool -c dencode_crushmap -o newcrushmap
 ```
+
 - 将crush map注入当前集群环境
+
 ```
 ceph osd setcrushmap -i newcrushmap
 ```
@@ -171,6 +174,7 @@ ceph osd setcrushmap -i newcrushmap
 删除无用的pool，并在这两个ch1_disk/ch2_disk规则之上创建新的pool
 ## 3.1删除default pool, 只剩下 .rgw.root
 运行 ./clean_pool.sh default
+
 ```
 #clean_pool.sh
 #!/bin/bash
@@ -230,8 +234,10 @@ do
         let id=${id}+1
 done
 ```
+
 - 运行 ./build_2class_pool.sh 创建pool
 - 查看pool
+
 ```
 [root@ceph-3 storage-class]# ceph osd pool ls
 .rgw.root
@@ -271,6 +277,7 @@ class_hdd_pool_2.non-ec
 
 # 4. 创建realm, zg, zone
 ## 4.1 创建realm, zg, zone及zong1-placement
+
 ```
 #delete default zg/zong
 radosgw-admin zonegroup delete --rgw-zonegroup=default
@@ -283,9 +290,11 @@ radosgw-admin zone create --rgw-zone=zone1 --rgw-zonegroup=petreloss  --master -
 radosgw-admin zone set --rgw-zone=zone1  --master --default --infile zone1.json
 radosgw-admin period update --commit
 ```
+
 > 由于这个实验是在同一个zone中的两个pool之间进行lifecycle的, 因此zone1的标准存储类别STANDARD使用的pool限定在class_hdd_pool_1中, zone1的冷存CLOD使用的pool限定在class_hdd_pool_2中。
 
 其中zone1.json文件内容如下,
+
 ```
 {
     "name": "zone1",
@@ -326,6 +335,7 @@ radosgw-admin period update --commit
     "realm_id": ""
 }
 ```
+
 > 问题：zon1文件中虽然指定了storage-classes.STANDARD.data_pool：class_hdd_pool_1.data, 但使用命令 radosgw-admin zone get --rgw-zone=zone1 查看时候并不会显示出 data_pool的指定pool, 这一点原因不清楚。
 
 ```
@@ -352,7 +362,9 @@ radosgw-admin period update --commit
     ....
 }
 ```
+
 由于radosgw-admin zone get --rgw-zone=zone1查看不显示data_pool，因此这里再显式的更改一下：
+
 ```
 [root@ceph-3 storage-class]# radosgw-admin zone placement modify --rgw-zone=zone1 \
 --data-pool=class_hdd_pool_1.data \
@@ -360,15 +372,19 @@ radosgw-admin period update --commit
 
 ERROR: placement id 'zone1-placement' is not configured in zonegroup placement targets
 ```
+
 > 问题：为什么一个 placement 必须先加入 zonegroup 后，才能再zone中添加？
 > - zone placement / zonegroup placement的关系是什么？
 
 这里先将zone1-placement添加进 zonegroup,并修改zone placement的data_pool:
+
 ```
 radosgw-admin zonegroup placement add --rgw-zonegroup=petreloss --placement-id=zone1-placement
 radosgw-admin zone placement modify --rgw-zone=zone1 --data-pool=class_hdd_pool_1.data --placement-id=zone1-placement
 ```
+
 查看一下：
+
 ```
 [root@ceph-3 storage-class]# radosgw-admin zone get --rgw-zone=zone1
 {
@@ -394,11 +410,14 @@ radosgw-admin zone placement modify --rgw-zone=zone1 --data-pool=class_hdd_pool_
     ....
 }
 ```
+
 此时我们已经将使用class_hdd_pool_1.xxx的placement创建完了。同样的道理，也顺便将使用class_hdd_pool_2.xxx的placement创建一下：
+
 > 问题：注意到其实placement使用的pool一共三类，分别是：data, index, data_extra_pool
 所以，之前创建的class_hdd_pool_2.xxx中有些池子是用不到的，我们暂且放在哪，稍后处理。不耽误主线。
 
 ## 4.2 创建clod-placement
+
 ```
 #加入zg
 radosgw-admin zonegroup placement add --rgw-zonegroup=petreloss --placement-id=clod-placement --storage-class=CLOD
@@ -409,7 +428,9 @@ radosgw-admin zone placement add --rgw-zone=zone1 --placement-id=clod-placement 
 --data-pool=class_hdd_pool_2.data \
 --data_extra_pool=class_hdd_pool_2.non-ec
 ```
+
 查看一下：
+
 ```
     "placement_pools": [
         {
@@ -443,17 +464,21 @@ radosgw-admin zone placement add --rgw-zone=zone1 --placement-id=clod-placement 
     ],
 
 ```
+
 至此，4步骤做完。
 
 # 5. 创建user, bucket
 ## 5.1 创建user
+
 ```
 radosgw-admin user create --uid="user123" --display-name="user123"
 ```
+
 > - 问题： 创建用户时候如果不指定 --placement-id 字段，则该用户将会使用zonegroup中默认的placement作为placement target. 这时候如果zg中的default-placement被删除，那么再创建user时候并不会报错，但是在使用该用户创建bucket时候会报错：ERROR: S3 error: 400 (InvalidLocationConstraint)。查看rgw日志，发现在zonegroup中找不到 default-placement。
 > - 解决办法：创建用户时候指定 --placement-id字段，如：--placement-id=zone1-placement. 
 
 上述解决方法是官方给的，我测试下貌似不管用：
+
 ```
 [root@ceph-3 s3cmd]# radosgw-admin user modify --uid=user123 --placement-id=zone1-placement
 {
@@ -464,22 +489,27 @@ radosgw-admin user create --uid="user123" --display-name="user123"
     ...
 }
 ```
+
 改进方法：
+
 ```
 radosgw-admin metadata get user:user123 > user.md.json
 vim user.md.json //将default_placement字段填上保存退出即可
 radosgw-admin metadata put user:user123 < user.md.json
 ```
+
 再次查看default_placement就有了。
 > - 问题: 如果你使用了含有default-placement的user创建了bucket：bucket-01, 但是由于种种原因, 你删掉了default-placement，并重新为user指定默认的placement，比如上边所属的：zone1-placement。那么bucket-01之后既不能进行上传文件，也不能被删除，因为系统会去查找之前与该user对应的默认placement，结果找不到，就会报错：ERROR: S3 error: 400 (InvalidArgument)。
 
 查看rgw日志，显示：
+
 ```
 NOTICE: invalid dest placement: default-placement
 init_permissions on sensebucket[83166252-1bf5-43e2-80f7-bd3e40c0edf3.96363.1] failed, ret=-22
 ```
 ## 5.2 创建bucket
 使用s3cmd进行bucket创建：
+
 ```
 s3cmd mb s3://sensebucket
 ```
@@ -487,18 +517,22 @@ s3cmd mb s3://sensebucket
 # 6. 修改policy
 使用python中的 boto3 sdk 进行lifecycle的操作：
 - 安装 boto3 
+
 ```
 pip install boto3
 ```
 - 修改rgw的配置文件
+
 ```
 vim /etc/ceph/ceph.conf
 在rgw部分添加：
 rgw_lifecycle_work_time = "00:00-24:00"
 rgw_lc_debug_interval = "10" 
 ```
+
 - 重启rgw
 - 编写 boto3的修改lifecycle的文件rgw_lifecycle_setup.py：
+
 ```
 #!/usr/bin/env python2.7
 #-*- coding: utf-8 -*-
@@ -537,11 +571,15 @@ if __name__ == "__main__":
         )
         print s3.get_bucket_lifecycle(Bucket=bucket)
 ```
+
 - 运行 ./rgw_lifecycle_setup.py
+
 ```
 {u'Rules': [{u'Status': 'Enabled', u'Prefix': '', u'Expiration': {u'Days': 1}, u'ID': 'Unique_identifier_for_the_rule'}], 'ResponseMetadata': {'HTTPStatusCode': 200, 'RetryAttempts': 0, 'HostId': '', 'RequestId': 'tx000000000000000000014-005f645282-1798e-zone1', 'HTTPHeaders': {'date': 'Fri, 18 Sep 2020 06:24:02 GMT', 'content-length': '267', 'x-amz-request-id': 'tx000000000000000000014-005f645282-1798e-zone1', 'content-type': 'application/xml', 'connection': 'Keep-Alive'}}}
 ```
+
 - 查看下：radosgw-admin lc list
+
 ```
 [root@ceph-3 s3cmd]# radosgw-admin lc list
 [
@@ -551,8 +589,11 @@ if __name__ == "__main__":
     }
 ]
 ```
+
 等待一天后看看是否该bucket的文件被删除了。(目前ceph不支持lifecycle的transition,后续实现并补充一篇文章，到时候再来完善本文章。)
+
 - 记录下本bucket下的文件：
+
 ```
 [root@ceph-3 s3cmd]# s3cmd --recursive ls s3://sensebucket/
 2020-09-18 06:08      5242880  s3://sensebucket/lifecycle_5MB.gz
