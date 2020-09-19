@@ -1,12 +1,14 @@
 ---
 layout: post
-title: one zone lifecycle between two pool
+title: rgw lifecycle
 date: 2020-09-15 23:30:09
 categories: Ceph
 description: ceph-rgw生命周期
 tags: Ceph
 ---
 
+> 说明：
+> - rgw lifecycle目前只支持过期删除策略，不同storage class之间的数据转移还不支持，不过这个是我接下来的工作之一。今天先把同一个zone下的两个storage class的环境搭建好，但只做过期删除。数据转移我后续会添加在标题8中
 
 # 1. 集群环境说明
 > 三台机器, 部署nautilus版本(关于在线部署请看另一篇文章：ceph-ansible部署nautilus版本ceph集群)：
@@ -603,3 +605,45 @@ if __name__ == "__main__":
 
 # 7. 验证生效
 ## 7.1 lifecycle的过期删除验证：
+
+- 首先查一下结果看是否删掉：
+
+```
+[root@ceph-3 s3cmd]# s3cmd --recursive ls s3://sensebucket/
+[root@ceph-3 s3cmd]  //空
+```
+可见sensebucket中的文件已经被删除。
+
+- 通过查询pool中的信息来从另一个角度证明该bucket的文件被删除
+
+```
+# 首先需要得到该bucket的id
+[root@ceph-3 ~]# radosgw-admin bucket stats --bucket=sensebucket
+{
+    "bucket": "sensebucket",
+    "num_shards": 0,
+    "tenant": "",
+    "zonegroup": "dc2a72aa-5db5-417c-9af0-1a8b6428d06a",
+    ......
+    
+    "id": "83166252-1bf5-43e2-80f7-bd3e40c0edf3.96363.1",
+    "marker": "83166252-1bf5-43e2-80f7-bd3e40c0edf3.96363.1",
+    "owner": "user123",
+    .......
+}
+
+# 去索引池查找该bucket id对应的信息
+[root@ceph-3 ~]# rados -p class_hdd_pool_1.index ls - |grep 83166252-1bf5-43e2-80f7-bd3e40c0edf3.96363.1
+.dir.83166252-1bf5-43e2-80f7-bd3e40c0edf3.96363.1
+
+# 使用listomapkeys 过滤
+[root@ceph-3 ~]# rados -p class_hdd_pool_1.index listomapkeys .dir.83166252-1bf5-43e2-80f7-bd3e40c0edf3.96363.1
+[root@ceph-3 ~]#  //空
+
+# 直接查看data pool
+[root@ceph-3 ~]# rados -p class_hdd_pool_1.data ls
+[root@ceph-3 ~]#  //空
+```
+
+# 8 lifecycle 之 transition
+待补充...
