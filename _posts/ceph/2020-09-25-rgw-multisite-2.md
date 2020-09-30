@@ -1,56 +1,29 @@
 ---
 layout: post
-title: rgw multisite
-date: 2020-09-20 23:30:09
+title: rgw multisite 扩展已有集群
+date: 2020-09-25 23:30:09
 categories: Ceph
 description: ceph-rgw多活
 tags: Ceph
 ---
 
 
+# 1. 说明
+本篇文章介绍两个已有集群融合后的数据同步
+> 上篇文章 rgw multisite写了关于两个集群之间zone的数据同步部署和测试。其中zone1,zone2之间满足条件：
+> - 1. zone1: 新集群 && zone2: 新集群
+> - 2. zone1: 已有集群 && zone2: 新集群
 
-# 1.multisite 说明
-> 多数据中心 (multisite) 旨在实现异地双活，提供了备份容灾的能力。 
+# 2. 现有的两个集群环境说明
+## zone1
 
-> 主节点在对外提供服务时，用户数据在主节点落盘后即向用户回应“写成功”应答，然后实时记录数据变化的相关日志信息。备节点则实时比较主备数据差异，并及时将差异化数据拉回备节点。异步复制技术适用于远距离的容灾方案，对系统性能影响较小。
 
-# 2.概念说明
-- realm代表一个命名空间, 一个 realm 包含一个或多个zonegroup (zg之前被称为 region, 一般表示一个数据中心), 一个zg包含一个或多个zone, zone包含bucket, bucket中存放数据
-
-> 每个realm都有与之对应period（表示一个realm的有效期）。每个period及时地代表了zonegroup的状态和zone的配置。每次需要对zonegroup或者zone做修改的时，需要更新period，并提交。
-- 单个数据中心的配置一般由一个zonegroup组成，这个zonegroup包含一个zone和一个或者多个rgw实例。在这些rgw中可以平衡网关请求。
-> - 元数据在同一realm的zone之间进行同步
-> - 实体数据只在同一zg中的主zone和从zone之间同步,无法跨zg访问实体数据信息。
-
-# 3.multisite 结构
-- zone: 对应一个独立的集群，有一组 RGW 对外提供服务
-- zonegroup: 每个zg可包含多个 zone, zone之间同步数据和元数据
-- realm: 每个realm包含多个zg, zg之间同步数据
-结构如下：
-![rgw-multisite-struct](https://mu-qer.github.io/assets/img/ceph/2020-09-15-rgw-multisite-struct-01.JPG)
-
-> master zone 和 secondly zone 有两种模式：active-active 和 active-passive。
-> - active-active 模式下master和slave 都可以读写，数据会自动同步 
-> - active-passive 下，只能在master 写入
+## zone2
  
 # 4.multisite 集群搭建
 multisite集群模型如下:
 
 ![rgw-multisite-cluster](https://mu-qer.github.io/assets/img/ceph/2020-09-15-rgw-multisite-cluster-01.JPG)
-
-这里有两个ceph集群，其中zone1将作为master, zone2将作为slave:
-- 集群1包括：zone-1, rgw-1, rgw-2
-- 集群2包括：zone-2, rgw-3, rgw-4
-
-其中，rgw-1 和 rgw-3是两个集群用于sync的网关。rgw-2 和 rgw-4是两个集群各自对外提供服务的网关，具体信息如下：
-
-| rgw name | address          |
-| -------- | -------          |
-| rgw-1    | 192.168.2.27:80  |
-| rgw-2    | 192.168.2.40:80  | 
-| rgw-3    | 192.168.2.167:80 |
-| rgw-4    | 192.168.2.166:80 |
-
 
 ## 4.1 创建master-zone/zg/realm
 在master zone集群中创建 realm, zonegroup, master zone
