@@ -15,7 +15,9 @@ tags: Ceph
 > - 2. zone1: 已有集群 && zone2: 新集群
 
 # 2. 现有的两个集群环境说明
+
 这里有两个ceph集群，其中zone1将作为master, zone2将作为slave:
+
 - 集群1包括：zone-1, rgw-1, rgw-2
 - 集群2包括：zone-2, rgw-3, rgw-4
 
@@ -35,7 +37,7 @@ multisite集群模型如下:
 ![rgw-multisite-cluster](https://mu-qer.github.io/assets/img/ceph/2020-09-25-rgw-multisite-cluster-01.jpg)
 
 ## 3.1 创建system user,并更新zone1
-如果本zone已经有系统级用户, 那么可以跳过4.1, 直接开始4.2操作
+如果本zone已经有系统级用户, 那么可以跳过3.1, 直接开始3.2操作
 
 - [1] 创建同步sync的系统级用户
 
@@ -79,27 +81,29 @@ radosgw-admin realm pull --url=http://192.168.2.27:80 --access-key=xxxxxxxx --se
 radosgw-admin realm default --rgw-realm=petrel
 ```
 
-- [2] 从master zone拉取period配置信息
+- [3] 从master zone拉取period配置信息
 
 ```
 radosgw-admin period pull --url=http://192.168.2.27:80 --access-key=xxxxxx --secret=xxxxxxxxx --rgw-realm=petrel
 ```
-- [3] 将slave zone添加到zonegroup:petreloss中
+- [4] 将slave zone添加到zonegroup:petreloss中
 
 ```
 radosgw-admin zonegroup add --rgw-zonegroup=petreloss --rgw-zone=zone2
 ```
 
-- [4] 配置slave zone的endpoints, access-key, secret-key```
+- [5] 配置slave zone的endpoints, access-key, secret-key
+
+```
 radosgw-admin zone modify --rgw-zone=zone2 --endpoints=http://192.168.2.166:80 --access-key=xxx --secret=xxx
 ```
 
-- [5] 更新period
+- [6] 更新period
 
 ```
 radosgw-admin period update --commit
 ```
-- [6] 更新rgw配置，重启rgw
+- [7] 更新rgw配置，重启rgw
 
 ```
 [client.rgw.dev-4]
