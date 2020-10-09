@@ -529,8 +529,17 @@ pip install boto3
 vim /etc/ceph/ceph.conf
 在rgw部分添加：
 rgw_lifecycle_work_time = "00:00-24:00"
-rgw_lc_debug_interval = "10" 
+rgw_lc_debug_interval = -10
 ```
+
+> lifecycle 相关参数：
+>> - rgw_lifecycle_work_time = "00:00-6:00"      执行lc时间窗口
+>> - rgw_enable_lc_threads = true                允许启动lc线程，设置false表示关闭lc功能
+>> - rgw_lc_lock_max_time = 60               某个lc线程每次可以执行的总时间，超过该时间没执行完，就等下次执行
+>> - rgw_lc_max_objs = 32                        lc rados对象个数
+>> - rgw_lc_max_rules = 1000                     一个bucket可以设置的rule数
+>> - rgw_lc_debug_interval = -10                 该配置主要为了方便调试lc。
+这个参数很关键，>0时，会忽略设置的时间窗口去执行，立即执行，并且此时设置的过期天数，1天等于1s，也就是说你设置7天后过期，此时表示7s后过期。<=0时，则按照正常的来执行。
 
 - 重启rgw
 - 编写 boto3的修改lifecycle的文件rgw_lifecycle_setup.py：
