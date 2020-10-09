@@ -191,6 +191,11 @@ do
 done
 ```
 ## 3.2创建两大类新的pool
+创建两大类pool： class_hdd_pool_1.xxx 和 class_hdd_pool_2.xxx
+其中, class_hdd_pool_1.xxx 用于 STANDARD 存储类, class_hdd_pool_2.xxx 用于 CLOD 存储类.
+在生命周期服务中, transition 操作是将 存储类A 中的data pool中的数据转移至 存储类B 中的data pool 中。
+而其他元数据/索引数据将共用 存储类A的。
+
 > - class_hdd_pool_1.xxx
 >> - class_hdd_pool_1.data
 >> - class_hdd_pool_1.index
@@ -325,6 +330,9 @@ radosgw-admin period update --commit
                 "storage-classes": {
                         "STANDARD": {
                                 "data_pool": "class_hdd_pool_1.data"
+                        },
+                        "CLOD": {
+                                "data_pool": "class_hdd_pool_2.data"
                         }
                 },
                 "index_type": 0,
@@ -352,7 +360,7 @@ radosgw-admin period update --commit
             "val": {
                 "index_pool": "class_hdd_pool_1.index",
                 "storage_classes": {
-                    "STANDARD": {  // 这里并不现实data_pool
+                    "STANDARD": {  // 这里并不显示data_pool
                         "compression_type": ""
                     }
                 },
@@ -368,22 +376,14 @@ radosgw-admin period update --commit
 由于radosgw-admin zone get --rgw-zone=zone1查看不显示data_pool，因此这里再显式的更改一下：
 
 ```
-[root@ceph-3 storage-class]# radosgw-admin zone placement modify --rgw-zone=zone1 \
---data-pool=class_hdd_pool_1.data \
---placement-id=zone1-placement
-
-ERROR: placement id 'zone1-placement' is not configured in zonegroup placement targets
+[root@ceph-3 storage-class]# radosgw-admin zonegroup placement add --rgw-zonegroup=petreloss --placement-id=zone1-placement
+[root@ceph-3 storage-class]# radosgw-admin zone placement modify --rgw-zone=zone1 --data-pool=class_hdd_pool_1.data --placement-id=zone1-placement \
+--data-pool=class_hdd_pool_1.data
 ```
 
 > 问题：为什么一个 placement 必须先加入 zonegroup 后，才能再zone中添加？
 > - zone placement / zonegroup placement的关系是什么？
-
-这里先将zone1-placement添加进 zonegroup,并修改zone placement的data_pool:
-
-```
-radosgw-admin zonegroup placement add --rgw-zonegroup=petreloss --placement-id=zone1-placement
-radosgw-admin zone placement modify --rgw-zone=zone1 --data-pool=class_hdd_pool_1.data --placement-id=zone1-placement
-```
+> - zonegroup placement和zone placement之间的关键是：整个集合 与 子集的关系。
 
 查看一下：
 
@@ -413,22 +413,64 @@ radosgw-admin zone placement modify --rgw-zone=zone1 --data-pool=class_hdd_pool_
 }
 ```
 
-此时我们已经将使用class_hdd_pool_1.xxx的placement创建完了。同样的道理，也顺便将使用class_hdd_pool_2.xxx的placement创建一下：
+此时我们已经将使用class_hdd_pool_1.xxx的placement创建完了。
 
-> 问题：注意到其实placement使用的pool一共三类，分别是：data, index, data_extra_pool
-所以，之前创建的class_hdd_pool_2.xxx中有些池子是用不到的，我们暂且放在哪，稍后处理。不耽误主线。
-
-## 4.2 创建clod-placement
+## 4.2 在zone1-placement中添加CLOD
 
 ```
-#加入zg
-radosgw-admin zonegroup placement add --rgw-zonegroup=petreloss --placement-id=clod-placement --storage-class=CLOD
-#加入zone
-radosgw-admin zone placement add --rgw-zone=zone1 --placement-id=clod-placement \
---storage-class=CLOD \ 
---index-pool=class_hdd_pool_2.index \
---data-pool=class_hdd_pool_2.data \
---data_extra_pool=class_hdd_pool_2.non-ec
+#get zg
+radosgw-admin zonegroup get --rgw-zonegroup=petreloss > zonegroup.json
+vim zonegroup.json
+在storage_classes中添加"CLOD":
+{
+    ...
+    "placement_targets": [
+        {
+            "name": "zone1-placement",
+            "tags": [],
+            "storage_classes": [
+                "CLOD",
+                "STANDARD"
+            ]
+        }
+    ],
+    ...
+}
+
+#set
+radosgw-admin zonegroup set --rgw-zonegroup=petreloss --infile=zonegroup.json
+
+#get zone
+radosgw-admin zone get --rgw-zone=zone1 > zone.json
+vim zone.json
+在storage_classes中添加"CLOD"相关信息：
+{
+    ......
+    "placement_pools": [
+        {
+            "key": "zone1-placement",
+            "val": {
+                "index_pool": "class_hdd_pool_1.index",
+                "storage_classes": {
+                    "CLOD": {
+                        "data_pool": "class_hdd_pool_2.data"
+                    },
+                    "STANDARD": {
+                        "data_pool": "class_hdd_pool_1.data",
+                        "compression_type": ""
+                    }
+                },
+                "data_extra_pool": "class_hdd_pool_1.non-ec",
+                "index_type": 0
+            }
+        }
+    ],
+    ......
+}
+
+#set
+radosgw-admin zone set --rgw-zone=zone1 --infile=zone.json
+
 ```
 
 查看一下：
@@ -436,26 +478,15 @@ radosgw-admin zone placement add --rgw-zone=zone1 --placement-id=clod-placement 
 ```
     "placement_pools": [
         {
-            "key": "clod-placement",
-            "val": {
-                "index_pool": "class_hdd_pool_2.index",
-                "storage_classes": {
-                    "CLOD": {
-                        "data_pool": "class_hdd_pool_2.data" //clod 使用pool 2
-                    },
-                    "STANDARD": {}
-                },
-                "data_extra_pool": "class_hdd_pool_2.non-ec",
-                "index_type": 0
-            }
-        },
-        {
             "key": "zone1-placement",
             "val": {
                 "index_pool": "class_hdd_pool_1.index",
                 "storage_classes": {
+                    "CLOD": {
+                        "data_pool": "class_hdd_pool_2.data"
+                    },
                     "STANDARD": {
-                        "data_pool": "class_hdd_pool_1.data", //standard 使用 pool 1
+                        "data_pool": "class_hdd_pool_1.data",
                         "compression_type": ""
                     }
                 },
@@ -533,13 +564,12 @@ rgw_lc_debug_interval = -10
 ```
 
 > lifecycle 相关参数：
->> - rgw_lifecycle_work_time = "00:00-6:00"      执行lc时间窗口
->> - rgw_enable_lc_threads = true                允许启动lc线程，设置false表示关闭lc功能
->> - rgw_lc_lock_max_time = 60               某个lc线程每次可以执行的总时间，超过该时间没执行完，就等下次执行
->> - rgw_lc_max_objs = 32                        lc rados对象个数
->> - rgw_lc_max_rules = 1000                     一个bucket可以设置的rule数
->> - rgw_lc_debug_interval = -10                 该配置主要为了方便调试lc。
-这个参数很关键，>0时，会忽略设置的时间窗口去执行，立即执行，并且此时设置的过期天数，1天等于1s，也就是说你设置7天后过期，此时表示7s后过期。<=0时，则按照正常的来执行。
+>> - rgw_lifecycle_work_time = "00:00-6:00" //执行lc时间窗口
+>> - rgw_enable_lc_threads = true //允许启动lc线程，设置false表示关闭lc功能
+>> - rgw_lc_lock_max_time = 60 //某个lc线程每次可以执行的总时间，超过该时间没执行完，就等下次执行
+>> - rgw_lc_max_objs = 32 //lc rados对象个数
+>> - rgw_lc_max_rules = 1000 //一个bucket可以设置的rule数
+>> - rgw_lc_debug_interval = -10  //该配置主要为了方便调试lc。这个参数很关键，>0时，会忽略设置的时间窗口去执行，立即执行，并且此时设置的过期天数，1天等于1s，也就是说你设置7天后过期，此时表示7s后过期。<=0时，则按照正常的来执行。
 
 - 重启rgw
 - 编写 boto3的修改lifecycle的文件rgw_lifecycle_setup.py：
@@ -655,4 +685,78 @@ if __name__ == "__main__":
 ```
 
 # 8 lifecycle 之 transition
-待补充...
+rgw lc中的transition是作用范围是：同一个placement下的storageclass之间。
+由于之前标题4已经将zonegroup, zone上添加了 CLOD 的相关信息以及rgw的配置文件也添加了对应的lifecycle的配置。所以这里不需要做这方面操作。
+
+## 8.1 boto3 lifecycle配置
+
+```
+            LifecycleConfiguration={
+                'Rules': [
+                    {
+                        'Status': 'Enabled',
+                        'Prefix': 'transclod-',
+                        'Transition':
+                            {
+                                'Days': 1,
+                                'StorageClass': 'CLOD'
+                            },
+                        'ID': 'sensebucket_id_0987654321' #uuid
+                    }
+                ],
+            }
+```
+执行该脚本，response:
+
+```
+{u'Rules': [{u'Status': 'Enabled', u'Prefix': 'transclod-', u'Transition': {u'Days': 1, u'StorageClass': 'CLOD'}, u'ID': 'sensebucket_id_0987654321'}], 'ResponseMetadata': {'HTTPStatusCode': 200, 'RetryAttempts': 0, 'HostId': '', 'RequestId': 'tx000000000000000000007-005f8031b2-176db-zone1', 'HTTPHeaders': {'date': 'Fri, 19 Sep 2020 09:47:30 GMT', 'content-length': '305', 'x-amz-request-id': 'tx000000000000000000007-005f8031b2-176db-zone1', 'content-type': 'application/xml', 'connection': 'Keep-Alive'}}}
+```
+
+## 8.2 测试
+
+> 注意上边的Rules，Prefix是"transclod-"
+
+我先上传一个不含有前缀的文件：
+
+```
+[root@ceph-3 ~]# s3cmd put test.5M.gz s3://sensebucket/test.5M.gz.clod.1009
+upload: 'test.5M.gz' -> 's3://sensebucket/test.5M.gz.clod.1009'  [1 of 1]
+ 5242880 of 5242880   100% in    0s    19.43 MB/s  done
+```
+
+分别查看 class_hdd_pool_1.data 和 class_hdd_pool_2.data, 发现 test.5M.gz.clod.1009 并没有被进行 transition。
+
+```
+[root@ceph-3 storage-class]# rados -p class_hdd_pool_1.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.sPQ50HnGJ3iXld7Dpvor7lDKsdlpbjH_1
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_test.5M.gz.clod.1009
+[root@ceph-3 storage-class]#
+[root@ceph-3 storage-class]# rados -p class_hdd_pool_2.data ls
+[root@ceph-3 storage-class]#
+```
+
+
+
+在上传一个小于4MB的文件, 含有前缀 'transclod-'：
+
+```
+[root@ceph-3 s3cmd]# s3cmd put user.md.json s3://sensebucket/transclod-user.md.json.1009
+upload: 'user.md.json' -> 's3://sensebucket/transclod-user.md.json.1009'  [1 of 1]
+ 1233 of 1233   100% in    0s    21.40 KB/s  done
+```
+
+分别查看 class_hdd_pool_1.data 和 class_hdd_pool_2.data:
+
+```
+[root@ceph-3 storage-class]# rados -p class_hdd_pool_1.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-user.md.json.1009                    #执行了transition
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.sPQ50HnGJ3iXld7Dpvor7lDKsdlpbjH_1
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_test.5M.gz.clod.1009
+[root@ceph-3 storage-class]#
+[root@ceph-3 storage-class]# rados -p class_hdd_pool_2.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.vgXJ_TO-bsHFcqVWG8p6mvtc_ykVv-w_0
+[root@ceph-3 storage-class]#
+```
+
+同样做了大于4MB的测试, 结果是也会执行 transition.
+
