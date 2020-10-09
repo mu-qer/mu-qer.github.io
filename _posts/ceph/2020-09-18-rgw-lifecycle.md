@@ -7,9 +7,6 @@ description: ceph-rgw生命周期
 tags: Ceph
 ---
 
-> 说明：
-> - rgw lifecycle目前只支持过期删除策略，不同storage class之间的数据转移还不支持，不过这个是我接下来的工作之一。今天先把同一个zone下的两个storage class的环境搭建好，但只做过期删除。数据转移我后续会添加在标题8中
-
 # 1. 集群环境说明
 > 三台机器, 部署nautilus版本(关于在线部署请看另一篇文章：ceph-ansible部署nautilus版本ceph集群)：
 >> - ceph-2: 192.168.2.76 (部署 mons, mgrs, osds), (osd0, 0sd3)
