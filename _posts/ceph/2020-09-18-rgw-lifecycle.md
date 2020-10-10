@@ -757,3 +757,153 @@ upload: 'user.md.json' -> 's3://sensebucket/transclod-user.md.json.1009'  [1 of 
 
 同样做了大于4MB的测试, 结果是也会执行 transition.
 
+执行了lifecycle之后, 为什么 class_hdd_pool_1.data 中依然有对象数据呢？我们查看下这些对象的stat
+
+```
+rados -p class_hdd_pool_1.data stat 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-user.md.json.1009
+class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-user.md.json.1009 mtime 2020-10-09 05:50:02.000000, size 0
+```
+
+发现执行 transition的对象 size=0.
+现在将该文件 transclod-user.md.json.1009 的stat 整个读取出来分析下：
+
+```
+radosgw-admin object stat --bucket=sensebucket --object=transclod-user.md.json.1009 > transclod-user.info
+```
+
+transclod-user.info文件内容如下：
+
+```
+{
+    "name": "transclod-user.md.json.1009",
+    "size": 1233,
+    "policy": {
+        "acl": {
+            .....
+        },
+        "owner": {
+            "id": "1009-user-01",
+            "display_name": "1009-user-01"
+        }
+    },
+    "etag": "d29d1ce22651886745d53560ffa097cb",
+    "tag": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95963.9",
+    "manifest": {
+        "objs": [],
+        "obj_size": 1233,
+        "explicit_objs": "false",
+        "head_size": 0,
+        "max_head_size": 0,
+        "prefix": ".vgXJ_TO-bsHFcqVWG8p6mvtc_ykVv-w_",
+        "rules": [
+            {
+                "key": 0,
+                "val": {
+                    "start_part_num": 0,
+                    "start_ofs": 0,
+                    "part_size": 0,
+                    "stripe_max_size": 4194304,
+                    "override_prefix": ""
+                }
+            }
+        ],
+        "tail_instance": "",
+        "tail_placement": {
+            "bucket": {
+                "name": "sensebucket",
+                "marker": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                "bucket_id": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                "tenant": "",
+                "explicit_placement": {
+                    "data_pool": "",
+                    "data_extra_pool": "",
+                    "index_pool": ""
+                }
+            },
+            "placement_rule": "zone1-placement/CLOD"
+        },
+        "begin_iter": {         #begin_iter 和 end_iter 完全一样, 并且 {manifest.obj_size} == 1233 < 4MB, 故只有一个分片
+            "part_ofs": 0,
+            "stripe_ofs": 0,
+            "ofs": 0,
+            "stripe_size": 1233,
+            "cur_part_id": 0,
+            "cur_stripe": 0,
+            "cur_override_prefix": "",
+            "location": {
+                "placement_rule": "zone1-placement/CLOD",  #当前分片存的存放规则
+                "obj": {
+                    "bucket": {
+                        "name": "sensebucket",
+                        "marker": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "bucket_id": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "tenant": "",
+                        "explicit_placement": {
+                            "data_pool": "",
+                            "data_extra_pool": "",
+                            "index_pool": ""
+                        }
+                    },
+                    "key": {
+                        "name": ".vgXJ_TO-bsHFcqVWG8p6mvtc_ykVv-w_0",       # ${marker}_${begin_iter.location.obj.key.name} 即为首分片名
+                        "instance": "",
+                        "ns": "shadow"
+                    }
+                },
+                "raw_obj": {
+                    "pool": "",
+                    "oid": "",
+                    "loc": ""
+                },
+                "is_raw": false
+            }
+        },
+        "end_iter": {
+            "part_ofs": 0,
+            "stripe_ofs": 0,
+            "ofs": 1233,
+            "stripe_size": 1233,
+            "cur_part_id": 0,
+            "cur_stripe": 0,
+            "cur_override_prefix": "",
+            "location": {
+                "placement_rule": "zone1-placement/CLOD",
+                "obj": {
+                    "bucket": {
+                        "name": "sensebucket",
+                        "marker": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "bucket_id": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "tenant": "",
+                        "explicit_placement": {
+                            "data_pool": "",
+                            "data_extra_pool": "",
+                            "index_pool": ""
+                        }
+                    },
+                    "key": {
+                        "name": ".vgXJ_TO-bsHFcqVWG8p6mvtc_ykVv-w_0",
+                        "instance": "",
+                        "ns": "shadow"
+                    }
+                },
+                "raw_obj": {
+                    "pool": "",
+                    "oid": "",
+                    "loc": ""
+                },
+                "is_raw": false
+            }
+        }
+    },
+    "attrs": {
+        "user.rgw.content_type": "text/plain",
+        "user.rgw.pg_ver": "",
+        "user.rgw.source_zone": "`<80>n$",
+        "user.rgw.storage_class": "CLOD",
+        "user.rgw.tail_tag": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95963.9",
+        "user.rgw.x-amz-content-sha256": "eace10acc865aedde72fc44a1cdcef24bb6203a149a1d6db268651ddfb930e35",
+        "user.rgw.x-amz-date": "20201009T095002Z",
+        "user.rgw.x-amz-meta-s3cmd-attrs": "atime:1602230611/ctime:1600398602/gid:0/gname:root/md5:d29d1ce22651886745d53560ffa097cb/mode:33188/mtime:1600398602/uid:0/uname:root"
+    }
+}
+```
