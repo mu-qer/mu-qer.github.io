@@ -907,3 +907,162 @@ transclod-user.info文件内容如下：
     }
 }
 ```
+
+# 9 另一种 transition 解析
+
+> 上述的 transition 是从 默认的storage_class=STANDARD 转移到storage_class=CLOD的，对象的header数据存放在STANDARD所在的pool中, 这里的data size=0, 数据信息被转移到 CLOD所在的pool中。
+
+本实验是将数据直接上传至 CLOD中, 然后制定lc策略, 将数据转移到 STANDARD中, 然后分析下结果。
+
+1. 先看下现有的池子中的数据情况：
+
+```
+[root@ceph-3 ~]# rados -p class_hdd_pool_1.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-user.md.json.1009
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-5mb.1009
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-test.1009
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.sPQ50HnGJ3iXld7Dpvor7lDKsdlpbjH_1
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_test.5M.gz.clod.1009
+
+
+
+[root@ceph-3 ~]# rados -p class_hdd_pool_2.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.vgXJ_TO-bsHFcqVWG8p6mvtc_ykVv-w_0
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.6LI53GKdlVrAd_bv8wvPBmv9OyYzbZg_0
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_1
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_0
+```
+
+2. 使用s3cmd上传一个新文件到 CLOD中：
+
+```
+[root@ceph-3 ~]# s3cmd put zone1.bak s3://bucket2/uptransfer-zone1.bak.1015 --storage-class=CLOD
+upload: 'zone1.bak' -> 's3://bucket2/uptransfer-zone1.bak.1015'  [1 of 1]
+ 1846 of 1846   100% in    0s    55.20 KB/s  done
+```
+
+3. 查看数据池中的情况：
+
+```
+[root@ceph-3 ~]# rados -p class_hdd_pool_1.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-user.md.json.1009
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-5mb.1009
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_transclod-test.1009
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015      // 新上传的文件, size = 0
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.sPQ50HnGJ3iXld7Dpvor7lDKsdlpbjH_1
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1_test.5M.gz.clod.1009
+[root@ceph-3 ~]#
+
+rados -p class_hdd_pool_1.data stat 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015
+class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015 mtime 2020-10-14 22:53:56.000000, size 0
+
+
+
+[root@ceph-3 ~]# rados -p class_hdd_pool_2.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.vgXJ_TO-bsHFcqVWG8p6mvtc_ykVv-w_0
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.6LI53GKdlVrAd_bv8wvPBmv9OyYzbZg_0
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2__shadow_.xlPy_gdmzIsI2C9nwhZCM9d9suP4mnf_0         //uptransfer-zone1.bak.1015
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_1
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_0
+```
+
+4. 为该bucket制定 lc 策略：
+
+```
+                'Rules': [
+                    {
+                        'Status': 'Enabled',
+                        'Prefix': 'uptransfer-',
+                        'Transition':
+                            {
+                                'Days': 1,
+                                'StorageClass': 'STANDARD'
+                            },
+                        'ID': 'transbucket_id_0987654321_uptransfer_bucket2'
+                    }
+                ]
+```
+
+5. 执行lc策略脚本：
+
+```
+[root@ceph-3 uplayer_transition]# ./rgw_lifecycle_setup.py
+{u'Rules': [{u'Status': 'Enabled', u'Prefix': 'uptransfer-', u'Transition': {u'Days': 1, u'StorageClass': 'STANDARD'}, u'ID': 'transbucket_id_0987654321_uptransfer_bucket2'}], 'ResponseMetadata': {'HTTPStatusCode': 200, 'RetryAttempts': 0, 'HostId': '', 'RequestId': 'tx000000000000000000020-005f87bafe-176db-zone1', 'HTTPHeaders': {'date': 'Thu, 15 Oct 2020 02:59:10 GMT', 'content-length': '329', 'x-amz-request-id': 'tx000000000000000000020-005f87bafe-176db-zone1', 'content-type': 'application/xml', 'connection': 'Keep-Alive'}}}
+
+```
+
+6. 查看两个数据池是否发生变化
+
+```
+[root@ceph-3 ~]# rados -p class_hdd_pool_1.data stat 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015
+class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015 mtime 2020-10-14 22:53:56.000000, size 1846
+
+//此时data2中的数据依然存在
+[root@ceph-3 ~]# rados -p class_hdd_pool_2.data stat 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2__shadow_.xlPy_gdmzIsI2C9nwhZCM9d9suP4mnf_0
+class_hdd_pool_2.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2__shadow_.xlPy_gdmzIsI2C9nwhZCM9d9suP4mnf_0 mtime 2020-10-14 22:53:56.000000, size 1846
+```
+
+可以看到, 数据已经转移到 STANDARD 上了.
+
+7. CLOD上的数据会不会被删除？
+
+查看gc 列表：
+
+```
+//查看gc任务：
+[root@ceph-3 ~]# radosgw-admin gc list
+[
+    {
+        "tag": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95963.30\u0000",
+        "time": "2020-10-15 00:59:32.0.926761s",
+        "objs": [
+            {
+                "pool": "class_hdd_pool_2.data",
+                "oid": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2__shadow_.xlPy_gdmzIsI2C9nwhZCM9d9suP4mnf_0",  //待删除的gc_oid
+                "key": "",
+                "instance": ""
+            }
+        ]
+    }
+]
+```
+发现, pool_2中的该对象已经被添加进了gc列表, 意思就是该对象会被异步删除掉。
+
+8. 查看rgw_gc参数：
+
+```
+//查看rgw_gc参数
+ceph --admin-daemon ceph-client.rgw.ceph-2.rgw0.28965.93983884214936.asok config show|grep gc 
+
+    "rgw_gc_max_concurrent_io": "10",
+    "rgw_gc_max_objs": "32",                //gc hint obj个数
+    "rgw_gc_max_trim_chunk": "16",
+    "rgw_gc_obj_min_wait": "7200",          //对象被gc回收前最少等待时间：2小时
+    "rgw_gc_processor_max_time": "3600",    //gc hint obj的超时时间
+    "rgw_gc_processor_period": "3600",      //gc线程运行周期
+    "rgw_nfs_max_gc": "300",
+    "rgw_objexp_gc_interval": "600",
+```
+
+等两小时在看下gc list 以及 pool_2的数据显示。
+
+9. 经过2小时后，查看gc list以及 pool_2数据显示.
+
+```
+[root@ceph-3 ~]# radosgw-admin gc list  //空了
+[]
+
+[root@ceph-3 ~]# rados -p class_hdd_pool_1.data stat 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015
+class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015 mtime 2020-10-14 22:53:56.000000, size 1846
+
+
+[root@ceph-3 ~]# rados -p class_hdd_pool_2.data ls
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.vgXJ_TO-bsHFcqVWG8p6mvtc_ykVv-w_0
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.6LI53GKdlVrAd_bv8wvPBmv9OyYzbZg_0
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_1
+8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_0
+```
+
+可以看到 gc list 已经为空。
+pool_2中的数据：_shadow_.xlPy_gdmzIsI2C9nwhZCM9d9suP4mnf_0 已经被删除。
+至此，数据由 CLOD 彻底的转移到了 STANDARD 中。

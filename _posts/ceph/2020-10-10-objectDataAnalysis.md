@@ -41,124 +41,145 @@ class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.sPQ5
 
 两个object大小分别为 4MB、1MB.
 
+4>. 看下bucket下整个test.5M.gz.clod.1009对象的stat
+
+```
+radosgw-admin object stat --bucket=sensebucket --object=test.5M.gz.clod.1009 > 5m.info
 ```
 
 ```
-
-本篇文章介绍两个已有集群融合后的数据同步
-> 上篇文章 rgw multisite写了关于两个集群之间zone的数据同步部署和测试。其中zone1,zone2之间满足条件：
-> - 1. zone1: 新集群 && zone2: 新集群
-> - 2. zone1: 已有集群 && zone2: 新集群
-
-# 2. 现有的两个集群环境说明
-
-这里有两个ceph集群，其中zone1将作为master, zone2将作为slave:
-
-- 集群1包括：zone-1, rgw-1, rgw-2
-- 集群2包括：zone-2, rgw-3, rgw-4
-
-其中，rgw-1 和 rgw-3是两个集群用于sync的网关。rgw-2 和 rgw-4是两个集群各自对外提供服务的网关，具体信息如下：
-
-| rgw name | address          |
-| -------- | -------          |
-| rgw-1    | 192.168.2.27:80  |
-| rgw-2    | 192.168.2.40:80  | 
-| rgw-3    | 192.168.2.166:80 |
-| rgw-4    | 192.168.2.167:80 |
-
- 
-# 3.multisite 集群搭建
-multisite集群模型如下:
-
-![rgw-multisite-cluster](https://mu-qer.github.io/assets/img/ceph/2020-09-25-rgw-multisite-cluster-01.jpg)
-
-## 3.1 创建system user,并更新zone1
-如果本zone已经有系统级用户, 那么可以跳过3.1, 直接开始3.2操作
-
-- [1] 创建同步sync的系统级用户
-
+{
+    "name": "test.5M.gz.clod.1009",
+    "size": 5242880,
+    "policy": {
+        "acl": {
+            .....
+        },
+        "owner": {
+            "id": "1009-user-01",
+            "display_name": "1009-user-01"
+        }
+    },
+    "etag": "5f363e0e58a95f06cbe9bbc662c5dfb6",
+    "tag": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95963.5",
+    "manifest": {
+        "objs": [],
+        "obj_size": 5242880,
+        "explicit_objs": "false",
+        "head_size": 4194304,
+        "max_head_size": 4194304,
+        "prefix": ".sPQ50HnGJ3iXld7Dpvor7lDKsdlpbjH_",
+        "rules": [
+            {
+                "key": 0,
+                "val": {
+                    "start_part_num": 0,
+                    "start_ofs": 4194304,
+                    "part_size": 0,
+                    "stripe_max_size": 4194304,
+                    "override_prefix": ""
+                }
+            }
+        ],
+        "tail_instance": "",
+        "tail_placement": {
+            "bucket": {
+                "name": "sensebucket",
+                "marker": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                "bucket_id": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                "tenant": "",
+                "explicit_placement": {
+                    "data_pool": "",
+                    "data_extra_pool": "",
+                    "index_pool": ""
+                }
+            },
+            "placement_rule": "zone1-placement"
+        },
+        "begin_iter": {
+            "part_ofs": 0,
+            "stripe_ofs": 0,
+            "ofs": 0,
+            "stripe_size": 4194304,
+            "cur_part_id": 0,
+            "cur_stripe": 0,
+            "cur_override_prefix": "",
+            "location": {
+                "placement_rule": "zone1-placement",
+                "obj": {
+                    "bucket": {
+                        "name": "sensebucket",
+                        "marker": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "bucket_id": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "tenant": "",
+                        "explicit_placement": {
+                            "data_pool": "",
+                            "data_extra_pool": "",
+                            "index_pool": ""
+                        }
+                    },
+                    "key": {
+                        "name": "test.5M.gz.clod.1009",			# ${marker}_${begin_iter.location.obj.key.name} 即为首分片名
+                        "instance": "",
+                        "ns": ""
+                    }
+                },
+                "raw_obj": {
+                    "pool": "",
+                    "oid": "",
+                    "loc": ""
+                },
+                "is_raw": false
+            }
+        },
+        "end_iter": {
+            "part_ofs": 4194304,
+            "stripe_ofs": 4194304,
+            "ofs": 5242880,
+            "stripe_size": 1048576,
+            "cur_part_id": 0,
+            "cur_stripe": 1,
+            "cur_override_prefix": "",
+            "location": {
+                "placement_rule": "zone1-placement",
+                "obj": {
+                    "bucket": {
+                        "name": "sensebucket",
+                        "marker": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "bucket_id": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1",
+                        "tenant": "",
+                        "explicit_placement": {
+                            "data_pool": "",
+                            "data_extra_pool": "",
+                            "index_pool": ""
+                        }
+                    },
+                    "key": {
+                        "name": ".sPQ50HnGJ3iXld7Dpvor7lDKsdlpbjH_1",		# ${marker}_${end_iter.location.obj.key.name} 即为首分片名
+                        "instance": "",
+                        "ns": "shadow"
+                    }
+                },
+                "raw_obj": {
+                    "pool": "",
+                    "oid": "",
+                    "loc": ""
+                },
+                "is_raw": false
+            }
+        }
+    },
+    "attrs": {
+        "user.rgw.content_type": "application/octet-stream",
+        "user.rgw.pg_ver": "",
+        "user.rgw.source_zone": "`<80>n$",
+        "user.rgw.storage_class": "STANDARD",
+        "user.rgw.tail_tag": "8fb2def7-7ccd-4803-a76a-566554e21b9e.95963.5",
+        "user.rgw.x-amz-content-sha256": "c036cbb7553a909f8b8877d4461924307f27ecb66cff928eeeafd569c3887e29",
+        "user.rgw.x-amz-date": "20201009T094415Z",
+        "user.rgw.x-amz-meta-s3cmd-attrs": "atime:1602215145/ctime:1600336720/gid:0/gname:root/md5:5f363e0e58a95f06cbe9bbc662c5dfb6/mode:33188/mtime:1600336720/uid:0/uname:root"
+    }
+}            
 ```
-radosgw-admin user create --uid="sync-admin" --display-name="sync-admin" --system
-```
 
-- [2] 更新zone的key信息
-access-key 和 secret 填写的是上一步创建的系统级用户的access-key和secret-key
-```
-radosgw-admin zone modify --rgw-zone=zone1 --access-key=xxx --secret=xxxx 
-```
-
-- [3] 更新period
-
-```
-radosgw-admin period update --commit
-```
-
-- [4] 更新ceph.conf, 找到对应的rgw配置区，并重启rgw实例
-
-```
-[client.rgw.dev-1]
-rgw zone = zone1
-
-systemctl list-units|grep rgw
-systemctl restart ceph-rgw@.xxxxx.service
-```
-
-## 3.2 操作zone2
-
-- [1] 从master zone拉取realm配置信息
-
-```
-radosgw-admin realm pull --url=http://192.168.2.27:80 --access-key=xxxxxxxx --secret=xxxxxxxx --rgw-realm=petrel
-```
-> 使用的access-key和secret就是同步的master中的系统用户的信息
-
-- [2] 设置realm为default
-```
-radosgw-admin realm default --rgw-realm=petrel
-```
-
-- [3] 从master zone拉取period配置信息
-
-```
-radosgw-admin period pull --url=http://192.168.2.27:80 --access-key=xxxxxx --secret=xxxxxxxxx --rgw-realm=petrel
-```
-- [4] 将slave zone添加到zonegroup:petreloss中
-
-```
-radosgw-admin zonegroup add --rgw-zonegroup=petreloss --rgw-zone=zone2
-```
-
-- [5] 配置slave zone的endpoints, access-key, secret-key
-
-```
-radosgw-admin zone modify --rgw-zone=zone2 --endpoints=http://192.168.2.166:80 --access-key=xxx --secret=xxx
-```
-
-- [6] 更新period
-
-```
-radosgw-admin period update --commit
-```
-- [7] 更新rgw配置，重启rgw
-
-```
-[client.rgw.dev-4]
-rgw zone = zone2
-
-systemctl list-units|grep rgw
-systemctl restart ceph-rgw@.xxxxx.service
-```
-
-# 4 测试结果
-做完以上部署后，可以直接观察原master zone/slave zone中的用户、bucket、数据文件的同步情况。
-总结：
-- master zone中的原有数据文件将会同步到 slave zone中
-- master zone中的原有用户信息将会同步到 slave zone中
-- master zone中的原有bucket信息将会同步到 slave zone 中
-- slave zone中的原有数据文件、用户、bucket将不会同步到 master zone中
-
-
-# 5 问题发现
-再做扩展已有集群的同步测试中发现：
-> master zone/slave zone的 placement 不同将不能进行数据同步，即：数据同步必须在相同的 placement-target中
 
