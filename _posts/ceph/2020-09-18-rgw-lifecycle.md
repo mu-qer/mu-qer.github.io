@@ -174,7 +174,7 @@ ceph osd setcrushmap -i newcrushmap
 ## 3.1删除default pool, 只剩下 .rgw.root
 运行 ./clean_pool.sh default
 
-```
+```bash
 #clean_pool.sh
 #!/bin/bash
 pool_prefix=$1
@@ -208,7 +208,7 @@ done
 >> - class_hdd_pool_2.log
 >> - class_hdd_pool_2.non-ec
 
-```
+```bash
 #build_2class_pool.sh
 #!/bin/bash
 
@@ -299,7 +299,7 @@ radosgw-admin period update --commit
 
 其中zone1.json文件内容如下,
 
-```
+```json
 {
     "name": "zone1",
     "domain_root": "class_hdd_pool_1.meta:root",
@@ -345,7 +345,7 @@ radosgw-admin period update --commit
 
 > 问题：zon1文件中虽然指定了storage-classes.STANDARD.data_pool：class_hdd_pool_1.data, 但使用命令 radosgw-admin zone get --rgw-zone=zone1 查看时候并不会显示出 data_pool的指定pool, 这一点原因不清楚。
 
-```
+```json
 [root@ceph-3 storage-class]# radosgw-admin zone get
 {
     "id": "6d8016ed-1e4d-4a65-9106-243f3a318d06",
@@ -384,7 +384,7 @@ radosgw-admin period update --commit
 
 查看一下：
 
-```
+```json
 [root@ceph-3 storage-class]# radosgw-admin zone get --rgw-zone=zone1
 {
     "id": "6d8016ed-1e4d-4a65-9106-243f3a318d06",
@@ -414,7 +414,7 @@ radosgw-admin period update --commit
 
 ## 4.2 在zone1-placement中添加CLOD
 
-```
+```json
 #get zg
 radosgw-admin zonegroup get --rgw-zonegroup=petreloss > zonegroup.json
 vim zonegroup.json
@@ -472,7 +472,7 @@ radosgw-admin zone set --rgw-zone=zone1 --infile=zone.json
 
 查看一下：
 
-```
+```json
     "placement_pools": [
         {
             "key": "zone1-placement",
@@ -571,7 +571,7 @@ rgw_lc_debug_interval = -10
 - 重启rgw
 - 编写 boto3的修改lifecycle的文件rgw_lifecycle_setup.py：
 
-```
+```python
 #!/usr/bin/env python2.7
 #-*- coding: utf-8 -*-
 
@@ -687,7 +687,7 @@ rgw lc中的transition是作用范围是：同一个placement下的storageclass�
 
 ## 8.1 boto3 lifecycle配置
 
-```
+```json
             LifecycleConfiguration={
                 'Rules': [
                     {
@@ -773,7 +773,7 @@ radosgw-admin object stat --bucket=sensebucket --object=transclod-user.md.json.1
 
 transclod-user.info文件内容如下：
 
-```
+```json
 {
     "name": "transclod-user.md.json.1009",
     "size": 1233,
@@ -968,7 +968,7 @@ class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zo
 
 4>. 为该bucket制定 lc 策略：
 
-```
+```json
                 'Rules': [
                     {
                         'Status': 'Enabled',
