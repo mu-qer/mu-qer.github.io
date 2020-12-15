@@ -174,7 +174,7 @@ ceph osd setcrushmap -i newcrushmap
 ## 3.1删除default pool, 只剩下 .rgw.root
 运行 ./clean_pool.sh default
 
-```
+```bash
 #clean_pool.sh
 #!/bin/bash
 pool_prefix=$1
@@ -208,7 +208,7 @@ done
 >> - class_hdd_pool_2.log
 >> - class_hdd_pool_2.non-ec
 
-```
+```bash
 #build_2class_pool.sh
 #!/bin/bash
 
@@ -299,7 +299,7 @@ radosgw-admin period update --commit
 
 其中zone1.json文件内容如下,
 
-```
+```json
 {
     "name": "zone1",
     "domain_root": "class_hdd_pool_1.meta:root",
@@ -345,7 +345,7 @@ radosgw-admin period update --commit
 
 > 问题：zon1文件中虽然指定了storage-classes.STANDARD.data_pool：class_hdd_pool_1.data, 但使用命令 radosgw-admin zone get --rgw-zone=zone1 查看时候并不会显示出 data_pool的指定pool, 这一点原因不清楚。
 
-```
+```json
 [root@ceph-3 storage-class]# radosgw-admin zone get
 {
     "id": "6d8016ed-1e4d-4a65-9106-243f3a318d06",
@@ -384,7 +384,7 @@ radosgw-admin period update --commit
 
 查看一下：
 
-```
+```json
 [root@ceph-3 storage-class]# radosgw-admin zone get --rgw-zone=zone1
 {
     "id": "6d8016ed-1e4d-4a65-9106-243f3a318d06",
@@ -414,7 +414,7 @@ radosgw-admin period update --commit
 
 ## 4.2 在zone1-placement中添加CLOD
 
-```
+```json
 #get zg
 radosgw-admin zonegroup get --rgw-zonegroup=petreloss > zonegroup.json
 vim zonegroup.json
@@ -472,7 +472,7 @@ radosgw-admin zone set --rgw-zone=zone1 --infile=zone.json
 
 查看一下：
 
-```
+```json
     "placement_pools": [
         {
             "key": "zone1-placement",
@@ -571,7 +571,7 @@ rgw_lc_debug_interval = -10
 - 重启rgw
 - 编写 boto3的修改lifecycle的文件rgw_lifecycle_setup.py：
 
-```
+```python
 #!/usr/bin/env python2.7
 #-*- coding: utf-8 -*-
 
@@ -687,7 +687,7 @@ rgw lc中的transition是作用范围是：同一个placement下的storageclass�
 
 ## 8.1 boto3 lifecycle配置
 
-```
+```json
             LifecycleConfiguration={
                 'Rules': [
                     {
@@ -773,7 +773,7 @@ radosgw-admin object stat --bucket=sensebucket --object=transclod-user.md.json.1
 
 transclod-user.info文件内容如下：
 
-```
+```json
 {
     "name": "transclod-user.md.json.1009",
     "size": 1233,
@@ -914,7 +914,7 @@ transclod-user.info文件内容如下：
 
 本实验是将数据直接上传至 CLOD中, 然后制定lc策略, 将数据转移到 STANDARD中, 然后分析下结果。
 
-1. 先看下现有的池子中的数据情况：
+1>. 先看下现有的池子中的数据情况：
 
 ```
 [root@ceph-3 ~]# rados -p class_hdd_pool_1.data ls
@@ -933,7 +933,7 @@ transclod-user.info文件内容如下：
 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_0
 ```
 
-2. 使用s3cmd上传一个新文件到 CLOD中：
+2>. 使用s3cmd上传一个新文件到 CLOD中：
 
 ```
 [root@ceph-3 ~]# s3cmd put zone1.bak s3://bucket2/uptransfer-zone1.bak.1015 --storage-class=CLOD
@@ -941,7 +941,7 @@ upload: 'zone1.bak' -> 's3://bucket2/uptransfer-zone1.bak.1015'  [1 of 1]
  1846 of 1846   100% in    0s    55.20 KB/s  done
 ```
 
-3. 查看数据池中的情况：
+3>. 查看数据池中的情况：
 
 ```
 [root@ceph-3 ~]# rados -p class_hdd_pool_1.data ls
@@ -966,9 +966,9 @@ class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zo
 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.1__shadow_.cE4sjjs_HPFC4d19llRRYkz-mBhN2V1_0
 ```
 
-4. 为该bucket制定 lc 策略：
+4>. 为该bucket制定 lc 策略：
 
-```
+```json
                 'Rules': [
                     {
                         'Status': 'Enabled',
@@ -983,7 +983,7 @@ class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zo
                 ]
 ```
 
-5. 执行lc策略脚本：
+5>. 执行lc策略脚本：
 
 ```
 [root@ceph-3 uplayer_transition]# ./rgw_lifecycle_setup.py
@@ -991,7 +991,7 @@ class_hdd_pool_1.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zo
 
 ```
 
-6. 查看两个数据池是否发生变化
+6>. 查看两个数据池是否发生变化
 
 ```
 [root@ceph-3 ~]# rados -p class_hdd_pool_1.data stat 8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2_uptransfer-zone1.bak.1015
@@ -1004,7 +1004,7 @@ class_hdd_pool_2.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2__shadow_.xlPy
 
 可以看到, 数据已经转移到 STANDARD 上了.
 
-7. CLOD上的数据会不会被删除？
+7>. CLOD上的数据会不会被删除？
 
 查看gc 列表：
 
@@ -1028,7 +1028,7 @@ class_hdd_pool_2.data/8fb2def7-7ccd-4803-a76a-566554e21b9e.95969.2__shadow_.xlPy
 ```
 发现, pool_2中的该对象已经被添加进了gc列表, 意思就是该对象会被异步删除掉。
 
-8. 查看rgw_gc参数：
+8>. 查看rgw_gc参数：
 
 ```
 //查看rgw_gc参数
@@ -1046,7 +1046,7 @@ ceph --admin-daemon ceph-client.rgw.ceph-2.rgw0.28965.93983884214936.asok config
 
 等两小时在看下gc list 以及 pool_2的数据显示。
 
-9. 经过2小时后，查看gc list以及 pool_2数据显示.
+9>. 经过2小时后，查看gc list以及 pool_2数据显示.
 
 ```
 [root@ceph-3 ~]# radosgw-admin gc list  //空了
