@@ -1,0 +1,236 @@
+---
+layout: post
+title: raft
+date: 2021-02-18 23:30:09
+categories: 分布式
+description: raft
+tags: raft
+---
+
+raft算法一个非拜占庭的一致性算法, 即所有通信是正确的而非伪造的.  N 个结点的情况下（N为奇数）可以最多容忍 (N-1)/2 个结点故障. 
+
+# raft中的三个角色
+
+- follower: 蓝色实心小球
+- candidate: 外围虚线的蓝色实心小球
+- leader: 外围实线的蓝色实心小球
+
+
+# RPC
+
+raft算法中各个结点之间通信使用的是RPC, 一致性算法只需两种类型的RPC, 为了在结点之间传递快照而增加了第三种RPC. 
+
+- RequestVote RPC: 		candidate 在选举领导人期间发起
+- AppendEntries RPC: 	leader 发起的一种心跳机制, 复制日志也在该命令中完成
+- InstallSnapshot RPC:  leader 使用该 RPC来发送快照给太落后/新加入集群的 follower
+
+
+# 领导人选举
+
+开始时候所有结点(奇数个)的角色都是：follower, 每个节点都有一个随机时长的定时器, follower在该定时器定义的超时时间内(150ms ~ 300ms)等待 leader的请求(心跳)信息. 
+如果在超时时间内未等到 leader的请求(心跳)信息, 则该 follower会立即转换成 candidate 角色, 并将自己的任期 term加1, 然后立即去向其他的 follower发送 VoteRequest 去征求其他 follower的支持(同意). 
+
+如果此时该 candidate 收到超过半数的 follower的支持, 则该 candidate会立即更换成 leader 角色, 并向所有的 follower 发送通知(注意：这类消息的通过心跳传递的, follower收到必须返回), follower收到 leader的上任通知后自动更新自己的任期和leader的保持一致, 并更新leader角色的所属节点.  此后如果该leader不会挂掉, 那么它总是会不停的向各个 follower发送心跳来维护自己的地位. 
+
+follower每次收到来自 leader的信息都会重新更新定时器. 
+
+## 初始状态
+
+所有节点的初始状态都是 follower:
+![leader-election-1](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-1.JPG)
+
+## 出现候选人并进行选举
+
+1. 在 follower的定时器超时之后, 会自动更新成 candidate 角色, 并将自己的任期+1, 以及自己给自己投一票：
+![leader-election-2](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-2.JPG)
+
+2. candidate 向其他节点发送 RequestVote:
+![leader-election-3](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-3.JPG)
+
+发送 RequestVote的结果有三种：
+> - 赢得了多数的选票, 成功选举为leader
+> - 收到leader的消息, 表示有其他服务器已经抢先当选了leader
+> - 没用服务器赢得超过半数的选票, leader选举失败, 等待选举时间超时后发起下一轮的选举 
+
+
+3. 由于candidate将自己的任期+1, 而其他结点的follower如果未在该任期投票, 则这些未在该任期投票的follower将会给这个 candidate进行投票支持并返回, 
+此时, 这些投给该任期的 candidate节点的 follower节点更新自己的任期与candidate保持一致, 并记录该任期的票投给了哪个 candidate, 并重置超时定时器：
+![leader-election-4](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-4.JPG)
+
+4. 一旦该 candidate获得了超半数的选票, 则该candidate立即更新成 leader角色：
+![leader-election-5](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-5.JPG)
+
+5. leader 将立即发送 AppendEntries消息给所有的 follower, 这些消息是通过内部指定的心跳来传递的：
+![leader-election-6](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-6.JPG)
+
+6. follower 对 AppendEntries消息是必须返回的, 同时更新自己的leader以及任期：
+![leader-election-7](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-7.JPG)
+
+7. 领导人选举过程结束, 此后follower和leader之间通过心跳传递信息, 直到leader挂或者 follower未收到心跳, 其他follower自动成为 candidate:
+![leader-election-8](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-8.JPG)
+![leader-election-9](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-9.JPG)
+
+
+## 多个结点同时成为候选人的选举过程
+
+1. B,C同时成为同一任期的候选人, 并同样的收到相同个数的选票(算上自己投自己的一票)：
+![leader-election-10](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-10.JPG)
+![leader-election-11](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-11.JPG)
+![leader-election-12](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-12.JPG)
+
+2. 出现这种状况后, 所有节点原地等待, 直到自己的随机定时器超时, 并迅速更换角色进行新一轮的选举. 
+
+
+## 网络分区导致的领导人选举
+
+某一 follower 结点与 leader 间通信发生问题, 导致发生了分区, 这时没有 leader 的那个分区就会进行一次选举. 这种情况下, 因为要求获得多数的投票才可以成为 leader, 因此只有拥有多数结点的分区可以正常工作. 而对于少数结点的分区, 即使仍存在 leader, 但由于写入日志的结点数量不可能超过半数因此不可能提交操作. 这解释了为何 raft 至多容忍 (N-1)/2 个结点故障. 
+
+![leader-election-13](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-13.gif)
+
+这解释了每个结点会如何在三个状态间发生变化：
+![leader-election-14](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-14.png)
+
+## 任期
+
+每一个任期以一次选举作为起点, 所以当一个结点成为 candidate 并向其他结点请求投票时, 会将自己的 Term 加 1, 表明新一轮的开始以及旧 leader 的任期结束. 所有结点在收到比自己更新的 Term 之后就会更新自己的 Term 更新至最新, 这些结点也立即转换成 follower角色, 而收到过时的消息(任期比自己小)则拒绝该请求.
+
+在一次成功选举完成后, leader 会负责管理所有结点直至任期结束. 如果没有产生新的 leader 就会开始一轮新的 Term. 
+任期在 raft 起到了类似时钟的功能, 用于检测信息是否过期.
+
+## 投票限制
+
+在投票时候, 所有 follower 结点采用先来先得的原则, 在一个任期内只可以投票给一个结点, 得到超过半数的投票才可成为 leader, 从而保证了一个任期内只会有一个 leader 产生（Election Safety).
+在 raft 中日志只有从 leader 到 follower 这一流向, 所以需要保证 leader 的日志必须正确, 即必须拥有所有已在多数结点上存在的日志, 这一步骤由投票来限制. 
+
+> 在 raft 中所有日志条目都是从 leader结点写入 follower结点, 且 leader结点上的日志只会增加, 绝不会删除或者覆盖. 这意味着leader结点必须包含所有已经提交的日志, 即:能被选举为leader的结点一定需要包含所有已经提交的日志. 
+
+>> 这就是leader选举的限制：能被选为leader的结点, 一定包含了所有已经提交的日志条目. 
+
+![leader-election-15](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-15.png)
+
+投票由一个 RequestVote的RPC调用进行, 请求中除了有 candidate自己的任期 term 和 id之外, 还要带有自己最后一个日志条目的index 和 term. 接收者收到后首先会判断请求的term是否更大, 不是则说明消息是旧的, 拒绝该请求. 如果任期更大则开始判断日志是否更新. 日志 term 越大则越新, 日志term相同那么index较大的为更新的日志. 接收者只会投票给拥有相同或者更加新的日志的 candidate.
+
+由于只有日志在被多数结点复制之后才会提交并返回, 所以如果一个 candidate并不拥有最新的已被复制的日志, 那么他不可能获得多数票, 从而保证了 leader 一定具有所有已被多数拥有的日志（leader Completeness）, 在后续同步时会将其同步给所有结点. 
+
+## 定时器
+
+定时器时间的设定实际上也会影响到算法性能甚至是正确性.
+试想一下这样一个场景, leader 下线, 有两个结点同时成为 candidate, 然后由于网络结构等原因, 每个结点都获得了一半的投票, 因此无人成为 leader 进入了下一轮. 然而在下一轮由于这两个结点同时结束, 又同时成为了 candidate, 再次重复了之前的这一流程, 那么算法就无法正常工作. 
+
+为了解决这一问题, raft 采用了随机定时器, 随机时长(150 ~ 300ms).  通过这一方法避免了两个结点同时成为 candidate, 即使发生了也能快速恢复. 这一长短必须长于 leader 的心跳间隔, 否则在正常情况下也会有 Candidate 出现导致算法无法正常工作. 
+
+
+# 日志复制
+
+- leader 绝不会覆盖或删除自己的日志, 只会追加 （leader append only）
+- 如果两个日志的index 和 term 相同, 那么这两个日志相同 (log matching)
+- 如果两个日志相同, 那么他们之前的日志均相同
+
+第一条：成为leader的结点里的日志一定拥有所有已被多数结点拥有的日志条目, 所以先前的日志条目很可能已经被提交, 因此不能删除之前的日志.
+第二条：一个任期内只能有一个leader, leader只会为一个日志条目创建一个index, 而且一旦写入就不会修改, 因此保证了日志的唯一性.
+第三条：因为在写入日志时会检查前一个日志是否一致, 因此递归推算保证了前边的日志都是一致的. 从而也保证了当一个日志被提交之后, 所有结点在该index上提交的内容是一样的. 
+(原因：每次RPC发送附加日志时, leader会把这条日志条目的前面的日志的下标和任期号一起发给follower, 如果follower发现和自己的日志不匹配, 那么就拒绝接受这条日志, 这称之为一致性检查)
+
+
+## 日志复制的过程
+
+leader选出后, 就开始接受客户端的请求. 
+- 客户端的每一个请求都包含被复制状态机执行的指令. 
+- leader把这个指令作为一条新的日志条目添加到日志中, 然后并行发起 RPC 给其他 follower, 让这些 follower复制这条信息
+- 假如这条日志被安全的复制, 领导人就应用这条日志到自己的状态机中, 并返回给客户端. 
+- 如果 follower 宕机/运行缓慢/丢包, leader会不停的重试, 直到所有的 follower最终都复制了所有的日志条目
+
+![leader-election-17](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-17.png)
+
+
+## 日志的组成
+
+日志是由‘有序编号log index’的日志条目组成, 每个日志条目包含它被创建时的任期号(term) 和用于状态机执行的命令. 如果一个日志条目被复制到大多数的结点服务器上, 就会被认为是可提交的(commit).
+![leader-election-18](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-18.png)
+上图显示, 共有8条日志, 提交了7条. 提交的日志都将通过状态机持久化到磁盘中, 防止宕机.
+
+
+## 日志同步过程
+
+日志同步是由一个 Append Entries的 RPC调用来实现的, leader会给每个 follower发送该 RPC以追加日志, 请求中除了当前任期term, leader的id和已提交的日志index, 还有将要追加的日志列表(空则为心跳包), 前一个日志的 index 和 term.
+![leader-election-16](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-16.png)
+
+当接收到该请求后, 会先检查 term, 如果请求中的 term 比自己的小说明已过期, 拒绝请求. 之后会对比先前日志的 index 和 term, 如果一致, 那么由前提可知前面的日志均相同, 那么就可以从此处更新日志, 将请求中的所有日志写入自己的日志列表中, 否则返回 false. 如果发生 index 相同但 term 不同则清空后续所有的日志, 以 leader 为准. 最后检查已提交的日志 index, 对可提交的日志进行提交操作.
+
+leader 会维护 nextIndex[] 和 matchIndex[] 两个数组, 分别记录了每个 follower 下一个将要发送的日志 index 和已经匹配上的日志 index. 每次成为 leader 都会初始化这两个数组, 前者初始化为 leader 最后一条日志的 index 加 1, 后者初始化为 0. 每次发送 RPC 时会发送 nextIndex[i] 及之后的日志, 成功则更新两个数组, 否则减少 nextIndex[i] 的值重试, 重复这一过程直至成功.
+
+> 这里减少 nextIndex 的值有不同的策略, 可以每次减一, 也可以减一个较大的值, 或者是跨任期减少, 用于快速找到和该结点相匹配的日志条目. 实际中还有可能会定期存储日志, 所以当前日志列表中并不会太大, 可以完整打包发给对方, 这一做法比较适合新加入集群的结点. 
+
+
+### 日志的不正常情况的解决方法
+
+一般情况下, leader和Followers的日志保持一致, 因此 AppendEntries 一致性检查通常不会失败. 然而, leader崩溃可能会导致日志不一致: 旧的leader可能没有完全复制完日志中的所有条目. 
+
+下图阐述了一些Followers可能和新的leader日志不同的情况. 
+一个Follower可能会丢失掉leader上的一些条目, 也有可能包含一些leader没有的条目, 也有可能两者都会发生. 丢失的或者多出来的条目可能会持续多个任期. 
+![leader-election-19](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-19.png)
+
+
+### 正确的日志复制过程
+
+leader通过强制Follower复制它的日志来处理日志的不一致, Followers上的不一致的日志会被leader的日志覆盖. leader为了使Followers的日志同自己的一致, leader需要找到Followers同它的日志一致的地方, 然后覆盖Followers在该位置之后的条目. 
+
+具体的操作是：leader会从后往前试, 每次AppendEntries失败后尝试前一个日志条目, 直到成功找到每个Follower的日志一致位置点, 然后向后逐条覆盖Followers在该位置之后的条目. 
+
+总结一下就是：当 leader 和 follower 日志冲突的时候, leader 将校验 follower 最后一条日志是否和 leader 匹配, 如果不匹配, 将递减查询, 直到匹配, 匹配后, 删除冲突的日志. 这样就实现了主从日志的一致性. 
+
+
+
+##日志的提交
+
+只要日志在多数结点上存在, 那么 leader 就可以提交该操作. 但是 Raft 额外限制了 leader 只对自己任期内的日志条目适用该规则, 先前任期的条目只能由当前任期的提交而间接被提交. 
+
+![leader-election-20](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-20.png)
+
+例如论文中图 8 这一 corner case. 一开始如 (a)所示, 之后 S1 下线, (b)中 S5 从 S3 和 S4 处获得了投票成为了 leader 并收到了一条来自客户端的消息, 之后 S5 下线. (c)中 S1 恢复并成为了 leader, 并且将日志复制给了多数结点, 之后进行了一个致命操作, 将 index 为 2 的日志提交了, 然后 S1 下线. (d)中 S5 恢复, 并从 S2、S3、S4 处获得了足够投票, 然后将已提交的 index 为 2 的日志覆盖了. 
+
+为了解决这个问题，Raft 只允许提交自己任期内的日志，从而日志 2 只能像 (e)中由于日志 3 同步而被间接提交，避免了 Follower 中由于缺少新任期的日志，使得 S5 能够继续成为 Leader。
+
+
+# 日志压缩
+
+在实际的系统中，不能让日志无限增长，否则系统重启时需要花很长的时间进行回放，从而影响可用性。Raft采用对整个系统进行snapshot来解决，snapshot之前的日志都可以丢弃（以前的数据已经落盘了）。
+
+每个副本独立的对自己的系统状态进行snapshot，并且只能对已经提交的日志记录进行snapshot。
+![leader-election-21](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-21.png)
+
+> Snapshot中包含以下内容:
+>> - 日志元数据，最后一条已提交的 log entry的 log index和term。这两个值在snapshot之后的第一条log entry的AppendEntries RPC的完整性检查的时候会被用上。
+>> - 系统当前状态
+
+当Leader要发给某个日志落后太多的Follower的log entry被丢弃，Leader会将snapshot发给Follower。或者当新加进一台机器时，也会发送snapshot给它。发送snapshot使用InstalledSnapshot RPC。 
+做snapshot既不要做的太频繁，否则消耗磁盘带宽， 也不要做的太不频繁, 否则一旦节点重启需要回放大量日志, 影响可用性. 
+推荐当日志达到某个固定的大小做一次snapshot。 做一次snapshot可能耗时过长，会影响正常日志同步。可以通过使用copy-on-write技术避免snapshot过程影响正常日志同步。
+
+
+
+# 安全性
+
+raft 增加了以下两条限制以保证安全性：
+
+- 拥有最新的已提交的log entry的Follower才有资格成为leader
+- leader只能推进commit index来提交当前term的已经复制到大多数服务器上的日志, 旧term日志的提交要等到提交当前term的日志来间接提交（log index 小于 commit index的日志被间接提交）
+
+
+# 成员变更问题
+
+## 常规处理成员变更存在的问题
+
+我们先将成员变更请求当成普通的写请求，由领导者得到多数节点响应后，每个节点提交成员变更日志，将从旧成员配置（Cold）切换到新成员配置（Cnew）。但每个节点提交成员变更日志的时刻可能不同，这将造成各个服务器切换配置的时刻也不同，这就有可能选出两个领导者，破坏安全性。
+
+考虑以下这种情况：集群配额从 3 台机器变成了 5 台, 可能存在这样的一个时间点, 两个不同的领导者在同一个任期里都可以被选举成功(双主问题), 一个是通过旧的配置, 一个通过新的配置.
+
+简而言之，成员变更存在的问题是增加或者减少的成员太多了，导致旧成员组和新成员组没有交集，因此出现了双主。
+
+![leader-election-22](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-22.png)
+
+## 解决方案之一是阶段性成员变更
+
+每次成员变更只允许增加或删除一个成员（如果要变更多个成员，连续变更多次）
+![leader-election-23](https://mu-qer.github.io/assets/img/distributed/2021-02-19-raft-leader-23.png)
+
