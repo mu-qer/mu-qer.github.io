@@ -10,6 +10,7 @@ categories:
 - Linux
 - Engine
 - General
+- Go
 ---
 
-This post contains 8 categories. Make sure your theme can display all of the categories.
+This post contains 9 categories. Make sure your theme can display all of the categories.

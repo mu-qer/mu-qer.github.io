@@ -1,6 +1,23 @@
-{% if site.duoshuo_shortname %}
+{% if site.gittalk.enable %}
 <section id="comments" class="comment">
-	<div class="ds-thread" data-thread-key="{{ page.id }}" data-title="{{ page.title }}" data-url="{{ site.url }}{{ site.baseurl }}{{ page.url }}"></div>
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+  <script src="https://unpkg.com/gitalk@latest/dist/gitalk.min.js"></script> 
+  <div id='gittalk-container' data-thread-key="{{ page.id }}" data-title="{{ page.title }}" data-url="{{ site.url }}{{ site.baseurl }}{{ page.url }}"></div>
+  <script type="text/javascript">
+    var gitalk = new Gitalk({
+        clientID: '{{ site.gittalk.clientID }}',
+        clientSecret: '{{ site.gittalk.clientSecret }}',
+        repo: '{{ site.gittalk.repo }}',
+        owner: '{{ site.gittalk.owner }}',
+        admin: ['{{ site.gittalk.admin }}'],
+        id: decodeURI(window.location.pathname)
+    });
+    gitalk.render('gittalk-container');
+</script>
+</section>
+{% elsif site.duoshuo_shortname %}
+<section id="comments" class="comment">
+  <div class="ds-thread" data-thread-key="{{ page.id }}" data-title="{{ page.title }}" data-url="{{ site.url }}{{ site.baseurl }}{{ page.url }}"></div>
 </section>
 {% elsif site.disqus_shortname %}
 <section id="comments" class="comment">
@@ -10,7 +27,7 @@
 </section>
 {% elsif site.hypercomments_id %}
 <section id="comments" class="comment">
-	<div id="hypercomments_widget"></div>
+  <div id="hypercomments_widget"></div>
 </section>
 <script type="text/javascript">
 _hcwp = window._hcwp || [];
@@ -27,15 +44,15 @@ s.parentNode.insertBefore(hcc, s.nextSibling);
 </script>
 <style>
 input.hcc::-moz-placeholder, textarea.hcc::-moz-placeholder {
-	color: #aaa;
+  color: #aaa;
 }
 
 input.hcc:-ms-input-placeholder, textarea.hcc::-ms-input-placeholder {
-	color: #aaa;
+  color: #aaa;
 }
 
 input.hcc::-webkit-input-placeholder, textarea.hcc::-webkit-input-placeholder {
-	color: #aaa;
+  color: #aaa;
 }
 </style>
 {% elsif site.yungentie_productkey %}
