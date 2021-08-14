@@ -11,6 +11,7 @@ categories:
 - Engine
 - General
 - Go
+- Kernel
 ---
 
-This post contains 9 categories. Make sure your theme can display all of the categories.
+This post contains 10 categories. Make sure your theme can display all of the categories.
