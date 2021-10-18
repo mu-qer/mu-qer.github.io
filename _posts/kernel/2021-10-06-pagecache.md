@@ -21,12 +21,15 @@ page cache以page为单位, 缓存文件内容. 缓存在page cache中的文件�
 # 两类缓存的逻辑关系
 
 从 linux-2.6.18内核源码上分析,page cache和buffer cache是一个组件的两种表现形式: 对于page而言(对上), 它是某个file的一个page cache, 对下它是一个device上的一组buffer cache.
+
 ![page-buffer-01](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-buffer-01.JPG)
 
 一个file如果是全部(部分)放在内存中,则存放在内存中的部分是以 4K(page size)为单位进行切分的, 而这一个page指的就是一个page cache. 而对应于落盘的一个文件而言, 最终这个4k的page cache还要映射到一组磁盘的block对应的buffer cache上, 假设block为1k, 那么每个pagecache将对应一组(4个)buffer cache, 而每一个buffer cache则有一个对应的buffer cache与device block映射关系的描述符: buffer_head, 这个描述符记录了这个buffer cache对应的磁盘上的具体位置.
+
 ![page-buffer-02](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-buffer-02.JPG)
 
 上图只展示了page cache与buffer cache以及对应的block之间的关联关系.  而从file的角度来看,想将数据写入磁盘,第一步则是需要找到file具体对应的page cache的哪个page? 进而才能将数据写入, 而要找到对应的page, 则依赖于inode结构中的 i_mapping字段:
+
 ![page-buffer-inode](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-buffer-inode.JPG)
 
 该字段为一 address_space 结构, 而实际上 address_space 即为一棵radix tree. 简单来说, radix tree即为一个多级索引结构, 如果将一个文件的大小, 以page为单位来切分,假设一个文件有N个page, 这个N是一个32bit的int, 那么, 这个32bit的N, 可以被切分成若干层级：level-0: [0 - 7bit], level-1:[8 - 15bit], level-2: [16 - 23bit], level-3: [24 - 31bit]. 
@@ -37,41 +40,52 @@ page cache以page为单位, 缓存文件内容. 缓存在page cache中的文件�
 >> - 2. Professional Linux Kernel Architecture
 
 基本的radix-tree映射结构:
+
 ![page-buffer-radixtree](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-buffer-radixtree.JPG)
 
 对应的inode上, i_mapping字段(address_space)对page的映射关系:
+
 ![page-buffer-imapping](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-buffer-imapping.JPG)
 
 # 融合
 
 linux-2.4之后page cache和buffer cache的实现进行了融合, 融合之后buffer cache的内容直接存在于page cache中:
+
 ![page-buffer-03](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-buffer-03.JPG)
 
 page结构中, 通过 buffers 字段是否为空, 来判定这个Page是否与一组Buffer Cache关联:
+
 ![page-01](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-01.JPG)
 一个page中buffers字段指向一个buffer_head链表, 每个buffer_head都对应一个buffer
 
 而对应的,  buffer_head则增加了字段 b_page , 直接指向对应的page:
+
 ![buffer-01](https://mu-qer.github.io/assets/img/kernel/2021-10-06-buffer-01.JPG)
 
 至此, 两者的关系已经相互融合如下图所示:
+
 ![page-buffer-04](https://mu-qer.github.io/assets/img/kernel/2021-10-06-page-buffer-04.JPG)
 
 一个文件的PageCache(page), 通过 buffers 字段能够非常快捷的确定该page对应的buffer_head信息, 进而明确该page对应的device, block等信息. 
 
 从逻辑上来看, 当针对一个文件的write请求进入内核时, 会执行 generic_file_write , 在这一层, 通过inode的address_space结构 mapping 会分配一个新的page来作为对应写入的page cache(这里我们假设是一个新的写入, 且数据量仅一个page)：grab_cache_page , 而在分配了内存空间page之后, 则通过 prepare_write , 来完成对应的buffer_head的构建. 
+
 ![buffer-head-build](https://mu-qer.github.io/assets/img/kernel/2021-10-06-buffer-head-build.JPG)
 
 prepare_write 实际执行的是：block_prepare_write , 在其中, 会针对该page分配对应的buffer_head( create_empty_buffers ), 并计算实际写入的在device上的具体位置：blocknr, 进而初始化buffer_head( get_block )
+
 ![buffer-head-build-2](https://mu-qer.github.io/assets/img/kernel/2021-10-06-buffer-head-build-2.JPG)
 
 在 create_empty_buffers 内部, 则通过 create_buffers 以及 set_bh_page 等一系列操作, 将page与buffer_head组织成如前图所示的通过 buffers 、 b_page 等相互关联的关系. 
+
 ![create-empty-buffer](https://mu-qer.github.io/assets/img/kernel/2021-10-06-create-empty-buffer.JPG)
 
 通过 create_buffers 分配一组串联好的buffer_head:
+
 ![create-buffer](https://mu-qer.github.io/assets/img/kernel/2021-10-06-create-buffer.JPG)
 
 通过 set_bh_page 将各buffer_head关联到对应的page, 以及data的具体位置:
+
 ![set_bh_page](https://mu-qer.github.io/assets/img/kernel/2021-10-06-set_bh_page.JPG)
 
 正是如上的一系列动作, 使得Page Cache与Buffer Cache(buffer_head)相互绑定. 对上, 在文件读写时, 以page为单位进行处理. 而对下, 在数据向device进行刷新时, 则可以以buffer_head(block)为单位进行处理. 
@@ -79,6 +93,7 @@ prepare_write 实际执行的是：block_prepare_write , 在其中, 会针对该
 在后续的linux-2.5版本中, 引入了bio结构来替换基于buffer_head的块设备IO操作. 
 
 > 这里的Page Cache与Buffer Cache的融合, 是针对文件这一层面的Page Cache与Buffer Cache的融合. 对于跨层的：File层面的Page Cache和裸设备Buffer Cache, 虽然都统一到了基于Page的实现, 但File的Page Cache和该文件对应的Block在裸设备层访问的Buffer Cache, 这两个是完全独立的Page, 这种情况下, 一个物理磁盘Block上的数据, 仍然对应了Linux内核中的两份Page, 一个是通过文件层访问的File的Page Cache(Page Cache), 一个是通过裸设备层访问的Page Cache(Buffer Cache). 
+
 ![block-page](https://mu-qer.github.io/assets/img/kernel/2021-10-06-block_page.JPG)
 
 上图左边是通过open裸设备来进行page的访问, 上图右边是通过open file来进行page的访问. 虽然这两个访问使用到的page cache和buffer cache都是基于page来实现的(如图底层数据集中的一个红色page), 但在内核中该page却存在两份, 分别用于通过file访问的以及通过裸设备进行访问的.
