@@ -4,7 +4,7 @@ title: memory management
 date: 2022-03-05 23:30:09
 categories: Kernel
 description: memory manage/malloc/free/merge
-tags: Linux, Kernel
+tags: Kernel
 ---
 
 # 虚拟内存
@@ -35,7 +35,7 @@ tags: Linux, Kernel
 
 每个进程都会有自己的页表Page Table，页表存储了进程中 <虚拟地址> 到 <物理地址> 的映射关系，所以就相当于一张地图，MMU收到CPU的虚拟地址之后开始查询页表，确定是否存在映射以及读写权限是否正常，如图:
 
-![mmu](https://mu-qer.github.io/assets/img/linux/2022-03-05-mmu.JPG)
+![mmu](https://mu-qer.github.io/assets/img/kernel/2022-03-05-mmu.JPG)
 
 当机器的物理内存越来越大，页表这个地图也将非常大，于是问题出现了:
 - 对于4GB的虚拟地址且大小为4KB页，一级页表将有2^20个表项，页表占有连续内存并且存储空间大
@@ -43,18 +43,18 @@ tags: Linux, Kernel
 
 我们以2级页表为例，MMU要先进行两次页表查询确定物理地址，在确认了权限等问题后，MMU再将这个物理地址发送到总线，内存收到之后开始读取对应地址的数据并返回。
 
-![multi-pagetable-search](https://mu-qer.github.io/assets/img/linux/2022-03-05-multi-pagetable-search.JPG)
+![multi-pagetable-search](https://mu-qer.github.io/assets/img/kernel/2022-03-05-multi-pagetable-search.JPG)
 
 MMU在2级页表的情况下进行了2次检索和1次读写.
 > 当页表变为N级时，就变成了N次检索 + 1次读写
 
 可见，页表级数越多查询的步骤越多，对于CPU来说等待时间越长，效率越低，这个问题还需要优化才行. 于是快表 TLB 出现了.
 
-![tlb](https://mu-qer.github.io/assets/img/linux/2022-03-05-tlb.JPG)
+![tlb](https://mu-qer.github.io/assets/img/kernel/2022-03-05-tlb.JPG)
 
 可以认为TLB是ptagetable在mmu中的缓存. 当CPU给MMU传新虚拟地址之后, MMU先去问TLB那边有没有, 如果有就直接拿到物理地址发到总线给内存。 没有的话 MMU还有保底的老武器页表 Page Table，在页表中找到之后MMU除了把地址发到总线传给内存，还把这条映射关系给到TLB，让它记录一下刷新缓存。
 
-![cpu-read-mem](https://mu-qer.github.io/assets/img/linux/2022-03-05-cpu-read-mem.JPG)
+![cpu-read-mem](https://mu-qer.github.io/assets/img/kernel/2022-03-05-cpu-read-mem.JPG)
 
 
 ### page fault
@@ -62,7 +62,7 @@ MMU在2级页表的情况下进行了2次检索和1次读写.
 假如目标内存页在物理内存中没有对应的页帧或者存在但无对应权限，CPU 就无法获取数据，这种情况下CPU就会报告一个page fault.
 由于CPU没有数据就无法进行计算, CPU罢工了用户进程也就出现了缺页中断，进程会从用户态切换到内核态，并将缺页中断交给内核的 Page Fault Handler 处理. 过程如图：
 
-![page-fault](https://mu-qer.github.io/assets/img/linux/2022-03-05-page-fault.JPG)
+![page-fault](https://mu-qer.github.io/assets/img/kernel/2022-03-05-page-fault.JPG)
 
 缺页中断会交给PageFaultHandler处理，其根据缺页中断的不同类型会进行不同的处理：
 
@@ -77,7 +77,7 @@ MMU在2级页表的情况下进行了2次检索和1次读写.
 
 总结如图：
 
-![page-fault-handler](https://mu-qer.github.io/assets/img/linux/2022-03-05-page-fault-handler.JPG)
+![page-fault-handler](https://mu-qer.github.io/assets/img/kernel/2022-03-05-page-fault-handler.JPG)
 
 
 常见的产生page fault的原因如下：
@@ -90,7 +90,7 @@ MMU在2级页表的情况下进行了2次检索和1次读写.
 
 虚拟机制下每个进程都有独立的地址空间，并且地址空间被划分为了很多部分，如图为32位系统中虚拟地址空间分配：
 
-![process-memory-struct](https://mu-qer.github.io/assets/img/linux/2022-03-05-process-memory-struct.JPG)
+![process-memory-struct](https://mu-qer.github.io/assets/img/kernel/2022-03-05-process-memory-struct.JPG)
 
 各段特点和联系：
 
@@ -108,7 +108,7 @@ MMU在2级页表的情况下进行了2次检索和1次读写.
 
 我把heap段、stack段、mmap段再细化一张图:
 
-![process-memory-struct-2](https://mu-qer.github.io/assets/img/linux/2022-03-05-process-memory-struct-2.JPG)
+![process-memory-struct-2](https://mu-qer.github.io/assets/img/kernel/2022-03-05-process-memory-struct-2.JPG)
 
 
 ## 内存的组织方式
@@ -127,19 +127,19 @@ struct mm_struct    *active_mm;
 - mmap指向一个双向链表，链表节点是vm_area_struct结构体，vm_area_struct描述了虚拟空间中的一个区域
 - mm_rb指向一个红黑树的根结点，节点结构也是vm_area_struct
 
-![mm_struct](https://mu-qer.github.io/assets/img/linux/2022-03-05-mm_struct.JPG)
+![mm_struct](https://mu-qer.github.io/assets/img/kernel/2022-03-05-mm_struct.JPG)
 
 看下vm_area_struct的结构体定义:
 
-![vm_area_struct](https://mu-qer.github.io/assets/img/linux/2022-03-05-vm_area_struct.JPG)
+![vm_area_struct](https://mu-qer.github.io/assets/img/kernel/2022-03-05-vm_area_struct.JPG)
 
 vm_area_start作为链表节点串联在一起，每个vm_area_struct表示一个虚拟内存区域，由其中的vm_start和vm_end指向了该区域的起始地址和结束地址，这样多个vm_area_struct就将进程的多个段组合在一起了。
 
-![vm_area_list](https://mu-qer.github.io/assets/img/linux/2022-03-05-vm_area_list.JPG)
+![vm_area_list](https://mu-qer.github.io/assets/img/kernel/2022-03-05-vm_area_list.JPG)
 
 我们同时注意到vm_area_struct的结构体定义中有rb_node的相关成员，不过有的版本内核是AVL-Tree，这样就和mm_struct对应起来了：
 
-![vm_area_rb_node](https://mu-qer.github.io/assets/img/linux/2022-03-05-vm_area_rb_node.JPG)
+![vm_area_rb_node](https://mu-qer.github.io/assets/img/kernel/2022-03-05-vm_area_rb_node.JPG)
 
 这样vm_area_struct通过双向链表和红黑树两种数据结构串联起来，实现了两种不同效率的查找，双向链表用于遍历vm_area_struct，红黑树用于快速查找符合条件的vm_area_struct。
 
@@ -153,7 +153,7 @@ vm_area_start作为链表节点串联在一起，每个vm_area_struct表示一�
 
 从而就引出了，今天的主线图：
 
-![mem_alloc_view1](https://mu-qer.github.io/assets/img/linux/2022-03-05-mem_alloc_view1.JPG)
+![mem_alloc_view1](https://mu-qer.github.io/assets/img/kernel/2022-03-05-mem_alloc_view1.JPG)
 
 
 从图中我们来阐述几个重点：
@@ -215,14 +215,14 @@ malloc维护了一个含有128个bin的数组, 数组名‘bin_array’. 每一�
 
 1. 通用的bins
 
-![malloc_bins](https://mu-qer.github.io/assets/img/linux/2022-03-05-malloc_bins.JPG)
+![malloc_bins](https://mu-qer.github.io/assets/img/kernel/2022-03-05-malloc_bins.JPG)
 
 - bins[0]目前没有使用
 - bins[1]的链表称为unsorted_list，用于维护free释放的chunk。
 - bins[2,63]总计长度为62的区间称为small_bins, 用于维护＜512B的内存块, 其中每个bin中对应的链表中的chunk大小相同, 相邻bin的大小相差8字节, 范围为16字节到504字节.
 - bins[64,126]总计长度为63的区间称为large_bins, 用于维护大于等于512字节的内存块, 每个元素对应的链表中的chunk大小不同, 数组下标越大链表中chunk的内存越大，large bins中的每一个bin分别包含了一个给定范围内的chunk，其中的chunk按大小递减排序，最后一组的largebin链中的chunk大小无限制，该bins的使用频率低于small bins。
 
-![malloc_bins_internal](https://mu-qer.github.io/assets/img/linux/2022-03-05-malloc_bins_internal.JPG)
+![malloc_bins_internal](https://mu-qer.github.io/assets/img/kernel/2022-03-05-malloc_bins_internal.JPG)
 
 2. 特殊的bins
 
@@ -246,7 +246,7 @@ malloc维护了一个含有128个bin的数组, 数组名‘bin_array’. 每一�
 
 ### malloc内存分配流程
 
-![malloc_flow_chart](https://mu-qer.github.io/assets/img/linux/2022-03-05-malloc_flow_chart.JPG)
+![malloc_flow_chart](https://mu-qer.github.io/assets/img/kernel/2022-03-05-malloc_flow_chart.JPG)
 
 在上图中有几个点需要说明：
 
@@ -260,7 +260,7 @@ malloc维护了一个含有128个bin的数组, 数组名‘bin_array’. 每一�
 
 当用户申请的内存比较小时，分配过程会比较复杂，我们再尝试梳理下该情况下的分配流程：
 
-![mallocsmallchunk_flow_chart](https://mu-qer.github.io/assets/img/linux/2022-03-05-mallocsmallchunk_flow_chart.JPG)
+![mallocsmallchunk_flow_chart](https://mu-qer.github.io/assets/img/kernel/2022-03-05-mallocsmallchunk_flow_chart.JPG)
 
 - 1. 将进程需要分配的内存转换为对应空闲内存块的大小, 记做chunk_size
 - 2. 当chunk_size小于等于max_fast，则在fast bin中搜索合适的chunk，找到则返回给用户，否则跳到第3步
@@ -304,7 +304,7 @@ page cache中有非常多page frame，要回收这些page frame需要确定这�
 
 NUMA架构下每个CPU都有自己的本地内存来加速访问避免总线拥挤，在本地内存不足时又可以访问其他Node的内存，但是访问速度会下降。
 
-![numa-mem](https://mu-qer.github.io/assets/img/linux/2022-03-05-numa-mem.JPG)
+![numa-mem](https://mu-qer.github.io/assets/img/kernel/2022-03-05-numa-mem.JPG)
 
 每个CPU加本地内存被称作Node，一个node又被划分为多个zone，每个zone有自己一套内存水位标记，来记录本zone的内存水平，同时每个node有一个kswapd内核线程来回收内存。
 
@@ -314,7 +314,7 @@ Linux内核中有一个非常重要的内核线程kswapd，负责在内存不足
 
 Linux内核使用水位标记（watermark）的概念来描述这个压力情况。
 
-![mem-free](https://mu-qer.github.io/assets/img/linux/2022-03-05-mem-free.JPG)
+![mem-free](https://mu-qer.github.io/assets/img/kernel/2022-03-05-mem-free.JPG)
 
 他们所标记的分别含义为：
 
