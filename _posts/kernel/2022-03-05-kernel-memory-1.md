@@ -192,13 +192,16 @@ jemalloc 应用十分广泛, 在 Firefox、Redis、Rust、Netty 等出名的产�
 
 ```c++
 #include <unistd.h>
-int brk (void *addr);
-void* sbrk(intptr_t increment);
+int brk (void *addr);				//kernel的系统调用
+void* sbrk(intptr_t increment);		//c的库函数
 ```
 
 - brk函数将break指针直接设置为某个地址, 相当于绝对值
 - sbrk将break指针从当前位置移动increment所指定的增量, 相当于相对值
 - 本质上brk和sbrk作用是一样的都是移动break指针的位置来扩展内存
+
+> 在heap堆区进行(小内存)内存扩张或收缩的原理非常简单, 堆的范围是有两个指针来划定的[start_brk, brk], 一个进程在运行过程中需要申请heap内存时候只需要改变brk的位置即可, 一般用户不需要直接调用brk系统调用, 而是执行c的库函数malloc/free, malloc/free再调用 sbrk(increment) 库函数. 如果increment是正数, 则将brk指针上移, 并返回扩张后的地址. 如果increment是负数, 则下移brk指针, 起到回收的作用.
+>> 上边说的是小内存, 如果申请的内存较大, 则malloc则会直接调用mmap进行匿名内存空间映射, 达到申请内存的目的. 这部分可以单独拎出来再写一篇. 
 
 ```c++
 #include <sys/mman.h>
